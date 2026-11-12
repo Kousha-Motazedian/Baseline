@@ -23,8 +23,8 @@ function contesters(): Contesters {
 }
 
 describe('isInsideShot / blendByHelp', () => {
-  it('treats drives, cuts and post-ups as inside shots and jumpers as outside', () => {
-    expect(PLAY_TYPES.filter(isInsideShot)).toEqual(['drive', 'cut', 'postUp'])
+  it('treats drives, cuts, post-ups and putbacks as inside shots and jumpers as outside', () => {
+    expect(PLAY_TYPES.filter(isInsideShot)).toEqual(['drive', 'cut', 'postUp', 'putback'])
   })
 
   it('uses only the on-ball value for jumpers and a mix for inside shots', () => {

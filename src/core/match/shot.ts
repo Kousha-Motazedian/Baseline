@@ -1,13 +1,22 @@
 import type { Player } from '../players/types.ts'
 import { adjustProbability, normalizeRating } from '../shared/probability.ts'
-import { pickWeighted } from '../shared/weighted.ts'
 import { describeShot } from './describe.ts'
-import { recordFoul } from './fouls.ts'
+import type { FastBreak } from './fastBreak.ts'
+import { transitionFoulEdge, transitionShotEdge } from './fastBreak.ts'
+import { commitFoul } from './fouls.ts'
 import { shootFreeThrows } from './freeThrows.ts'
 import type { Contesters } from './contest.ts'
-import { contestHeight, contestSkill, isInsideShot, matchupEdge } from './contest.ts'
+import {
+  blendByHelp,
+  contestHeight,
+  contestSkill,
+  isInsideShot,
+  matchupEdge,
+  pickContester,
+} from './contest.ts'
+import type { ActionOutcome } from './outcome.ts'
+import { possessionOver } from './outcome.ts'
 import { blockSkill, heightEdge, offensiveSkill } from './ratings.ts'
-import type { ActionOutcome } from './rebound.ts'
 import { resolveRebound } from './rebound.ts'
 import type { GameState, TeamState } from './state.ts'
 import { contestSituationalEdge, personalEdge } from './situation.ts'
@@ -22,6 +31,7 @@ import {
   FOUL_EDGE_WEIGHT,
   HEIGHT_EDGE_WEIGHT,
   HOME_SHOOTING_EDGE,
+  SHORTHANDED_SHOT_EDGE,
 } from './tuning.ts'
 import type { PlayType } from './types.ts'
 
@@ -34,9 +44,15 @@ export interface ShotContext {
   /** The on-ball defender and the help rim protector contesting the shot. */
   contesters: Contesters
   playType: PlayType
+  /** The teammate who passed the shooter the ball on this action, if anyone did. */
+  passer?: Player
+  /** Set when the shot comes on a fast break. */
+  fastBreak?: FastBreak
+  /** Log-odds penalty when the period clock forced a rushed shot (a heave at the buzzer). */
+  rushPenalty?: number
 }
 
-/** The offense's situational edge: shooter's form and clutch composure, plus home court. */
+/** The offense's situational edge: shooter's form, composure and the crowd, plus home court. */
 function offenseSituationalEdge(ctx: ShotContext): number {
   const edge = personalEdge(ctx.game, ctx.offense, ctx.shooter)
   return ctx.offense.isHome ? edge + HOME_SHOOTING_EDGE : edge
@@ -50,6 +66,11 @@ function sizeEdge(ctx: ShotContext): number {
   return HEIGHT_EDGE_WEIGHT * diff
 }
 
+/** Log-odds edge from having more players on the floor than the defense (short-handed teams). */
+function numbersEdge(ctx: ShotContext): number {
+  return SHORTHANDED_SHOT_EDGE * (ctx.offense.onCourt.length - ctx.defense.onCourt.length)
+}
+
 /** The chance this shot goes in (before any foul penalty). */
 export function makeChance(ctx: ShotContext): number {
   const edge =
@@ -59,39 +80,60 @@ export function makeChance(ctx: ShotContext): number {
     ) +
     offenseSituationalEdge(ctx) -
     contestSituationalEdge(ctx.game, ctx.defense, ctx.contesters, ctx.playType) +
-    sizeEdge(ctx)
+    sizeEdge(ctx) +
+    numbersEdge(ctx) +
+    transitionShotEdge(ctx.fastBreak) -
+    (ctx.rushPenalty ?? 0)
   return adjustProbability(BASE_MAKE[ctx.playType], edge)
 }
 
-/** The chance the shooter is fouled: aggressive shooters draw fouls, disciplined defenders avoid them. */
+/**
+ * The chance the shooter is fouled: aggressive shooters draw fouls, disciplined defenders avoid
+ * them. The help defender's Discipline counts by his share of the contest, matching who gets
+ * charged with the foul.
+ */
 export function shootingFoulChance(ctx: ShotContext): number {
   // Equal weights on both sides, like every other matchup, so a uniformly better league
   // doesn't draw more (or fewer) fouls.
+  const discipline = blendByHelp(
+    ctx.playType,
+    ctx.contesters.defender.attributes.discipline,
+    ctx.contesters.rimProtector.attributes.discipline,
+    ctx.contesters.helpFactor,
+  )
   const edge =
     FOUL_EDGE_WEIGHT * normalizeRating(ctx.shooter.attributes.aggression) -
-    FOUL_EDGE_WEIGHT * normalizeRating(ctx.contesters.defender.attributes.discipline)
+    FOUL_EDGE_WEIGHT * normalizeRating(discipline) +
+    transitionFoulEdge(ctx.fastBreak)
   return adjustProbability(BASE_SHOOTING_FOUL[ctx.playType], edge)
 }
 
-/** Credits an assist on a made shot, if one happened. Good passers on the floor create more assisted baskets. */
-function maybeCreditAssist(ctx: ShotContext): string {
-  const teammates = ctx.offense.onCourt.filter((p) => p !== ctx.shooter)
-  const avgPassing = teammates.reduce((s, p) => s + p.attributes.passing, 0) / teammates.length
-  const chance = adjustProbability(
-    BASE_ASSIST[ctx.playType],
-    ASSIST_PASSING_WEIGHT * normalizeRating(avgPassing),
+/** Chance a made shot off a pass counts as an assist: better passers set up better shots. */
+export function assistChance(passer: Player, playType: PlayType): number {
+  return adjustProbability(
+    BASE_ASSIST[playType],
+    ASSIST_PASSING_WEIGHT * normalizeRating(passer.attributes.passing),
   )
-  if (!ctx.game.rng.chance(chance)) return ''
+}
 
-  const passer = pickWeighted(ctx.game.rng, teammates, (p) => p.attributes.passing ** 2)
+/**
+ * Credits an assist on a made shot to the player who actually passed the ball, if the pass led
+ * directly to the basket. A shooter who created his own shot (no pass this action) is never
+ * assisted, and not every pass is an assist (e.g. a post entry the big then works for).
+ */
+function maybeCreditAssist(ctx: ShotContext): string {
+  const passer = ctx.passer
+  if (!passer || !ctx.game.rng.chance(assistChance(passer, ctx.playType))) return ''
   lineOf(ctx.offense, passer).assists += 1
   return ` (assist ${shortName(passer)})`
 }
 
 /** Decides whether a missed shot was blocked, and by whom. Returns the blocker, or undefined. */
 function maybeBlock(ctx: ShotContext): Player | undefined {
-  // Inside shots are usually blocked by the rim protector; jumpers only by the man guarding the shooter.
-  const blocker = isInsideShot(ctx.playType) ? ctx.contesters.rimProtector : ctx.contesters.defender
+  // Inside shots are usually blocked by the rim protector; jumpers only by the man guarding the
+  // shooter. In transition the rim protector is often not back, so he blocks less.
+  const help = isInsideShot(ctx.playType) && ctx.contesters.helpFactor !== 0
+  const blocker = help ? ctx.contesters.rimProtector : ctx.contesters.defender
   const edge = normalizeRating(blockSkill(blocker)) + HEIGHT_EDGE_WEIGHT * heightEdge(blocker)
   const chance = adjustProbability(BASE_BLOCK_SHARE_OF_MISSES[ctx.playType], edge)
   return ctx.game.rng.chance(chance) ? blocker : undefined
@@ -112,32 +154,29 @@ function recordFieldGoal(ctx: ShotContext, made: boolean): void {
   }
 }
 
+/** Play-by-play wording for this shot, with a fast-break tag. */
+function shotText(ctx: ShotContext): string {
+  return `${describeShot(ctx.playType)}${ctx.fastBreak ? ' on the fast break' : ''}`
+}
+
 /** Handles a made shot: points, assist, play-by-play. */
 function handleMake(ctx: ShotContext, points: number): void {
   recordFieldGoal(ctx, true)
   addPoints(ctx.game, ctx.offense, ctx.shooter, points)
   const assist = maybeCreditAssist(ctx)
-  log(
-    ctx.game,
-    ctx.offense,
-    `${shortName(ctx.shooter)} makes ${describeShot(ctx.playType)}${assist}`,
-  )
+  log(ctx.game, ctx.offense, `${shortName(ctx.shooter)} makes ${shotText(ctx)}${assist}`)
 }
 
-/** Handles a missed shot that wasn't fouled: box score, possible block, play-by-play. */
-function handleMiss(ctx: ShotContext): void {
+/** Handles a missed shot that wasn't fouled: box score, possible block, play-by-play. Returns the blocker. */
+function handleMiss(ctx: ShotContext): Player | undefined {
   recordFieldGoal(ctx, false)
+  log(ctx.game, ctx.offense, `${shortName(ctx.shooter)} misses ${shotText(ctx)}`)
   const blocker = maybeBlock(ctx)
   if (blocker) {
     lineOf(ctx.defense, blocker).blocks += 1
-    log(
-      ctx.game,
-      ctx.offense,
-      `${shortName(blocker)} blocks ${shortName(ctx.shooter)}'s ${describeShot(ctx.playType)}`,
-    )
-  } else {
-    log(ctx.game, ctx.offense, `${shortName(ctx.shooter)} misses ${describeShot(ctx.playType)}`)
+    log(ctx.game, ctx.defense, `${shortName(blocker)} blocks ${shortName(ctx.shooter)}'s shot`)
   }
+  return blocker
 }
 
 /** Resolves a full shot attempt, including fouls, free throws, and the rebound. */
@@ -146,15 +185,20 @@ export function resolveShot(ctx: ShotContext): ActionOutcome {
   const fouled = ctx.game.rng.chance(shootingFoulChance(ctx))
   const made = ctx.game.rng.chance(makeChance(ctx) * (fouled ? AND_ONE_MAKE_FACTOR : 1))
 
+  let blocker: Player | undefined
   if (made) handleMake(ctx, points)
   // Basketball scoring rule: a missed shot on a shooting foul is not counted as a field goal attempt.
-  else if (!fouled) handleMiss(ctx)
+  else if (!fouled) blocker = handleMiss(ctx)
 
   if (fouled) {
-    recordFoul(ctx.game, ctx.defense, ctx.contesters.defender)
+    // The foul goes to whichever contester was responsible, in proportion to their share of the
+    // contest: on drives and cuts the help rim protector picks up about half of them.
+    const fouler = pickContester(ctx.game.rng, ctx.contesters, ctx.playType)
+    commitFoul(ctx.game, ctx.defense, fouler, 'Shooting foul')
     // And-one: 1 free throw after a make; otherwise as many free throws as the shot was worth.
     const freeThrows = made ? 1 : points
     return shootFreeThrows(ctx.game, ctx.offense, ctx.defense, ctx.shooter, freeThrows)
   }
-  return made ? 'possessionOver' : resolveRebound(ctx.game, ctx.offense, ctx.defense, false)
+  if (made) return possessionOver()
+  return resolveRebound(ctx.game, ctx.offense, ctx.defense, blocker ? 'block' : 'shot')
 }

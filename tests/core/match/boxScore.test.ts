@@ -4,7 +4,7 @@ import type { MatchResult } from '../../../src/core/match/types.ts'
 import { PRO_RULES } from '../../../src/core/world/rules.ts'
 import { generatedPair } from '../../helpers/fixtures.ts'
 import { expectValidResult } from '../../helpers/invariants.ts'
-import { mean, SLOW_TEST_TIMEOUT_MS, teamTotal } from '../../helpers/simulation.ts'
+import { gameSeconds, mean, SLOW_TEST_TIMEOUT_MS, teamTotal } from '../../helpers/simulation.ts'
 
 /** 200 seeded games between freshly generated average teams (≈1 s; enough to hit overtimes). */
 function sampleGames(): MatchResult[] {
@@ -45,8 +45,10 @@ describe('box score integrity (200 generated games)', { timeout: SLOW_TEST_TIMEO
       for (const team of [r.home, r.away]) {
         expect(team.points).toBeGreaterThan(70)
         expect(team.points).toBeLessThan(170)
-        expect(team.possessions).toBeGreaterThan(85)
-        expect(team.possessions).toBeLessThan(125)
+        // Per 48 minutes, so a double-overtime game (~58 minutes) isn't flagged as runaway pace.
+        const per48 = (team.possessions / gameSeconds(r, PRO_RULES)) * 48 * 60
+        expect(per48).toBeGreaterThan(85)
+        expect(per48).toBeLessThan(125)
         expect(teamTotal(team, 'fieldGoalsAttempted')).toBeGreaterThan(60)
       }
     }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { generateTeam } from '../../../src/core/data/teamGenerator.ts'
 import { playWeight } from '../../../src/core/match/playSelection.ts'
-import { PLAY_TYPES } from '../../../src/core/match/types.ts'
+import { HALF_COURT_PLAY_TYPES } from '../../../src/core/match/types.ts'
 import type { Player } from '../../../src/core/players/types.ts'
 import { VISIBLE_ATTRIBUTE_KEYS } from '../../../src/core/players/attributes.ts'
 import { createRng } from '../../../src/core/shared/rng.ts'
@@ -20,7 +20,7 @@ describe('playWeight', () => {
       Player,
       Player,
     ]
-    const ratios = PLAY_TYPES.map(
+    const ratios = HALF_COURT_PLAY_TYPES.map(
       (type) =>
         playWeight(boosted(shooter, 3), type, {
           defender: boosted(defender, 3),

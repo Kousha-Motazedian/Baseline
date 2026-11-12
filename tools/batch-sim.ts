@@ -5,6 +5,9 @@
  *   npm run sim:batch -- --games 5000      more games (tighter averages)
  *   npm run sim:batch -- --seed 42         different random league
  *   npm run sim:batch -- --balance         also run the offense-vs-defense balance tests
+ *
+ * Besides the league games, it plays the same number of games between identical teams (a team
+ * against a copy of itself) to measure randomness: final-margin spread, overtime rate, home edge.
  */
 import { generateTeam } from '../src/core/data/teamGenerator.ts'
 import { simulateGame } from '../src/core/match/game.ts'
@@ -39,6 +42,10 @@ interface Totals {
   assists: number
   blocks: number
   steals: number
+  personalFouls: number
+  technicalFouls: number
+  fastBreakPoints: number
+  pointsOffTurnovers: number
   playTypeAttempts: Record<PlayType, number>
   playTypeMakes: Record<PlayType, number>
 }
@@ -66,6 +73,10 @@ function emptyTotals(): Totals {
     assists: 0,
     blocks: 0,
     steals: 0,
+    personalFouls: 0,
+    technicalFouls: 0,
+    fastBreakPoints: 0,
+    pointsOffTurnovers: 0,
     playTypeAttempts: zeroByPlay(),
     playTypeMakes: zeroByPlay(),
   }
@@ -99,6 +110,10 @@ function addTeamGame(
   totals.assists += sumLines(team, 'assists')
   totals.blocks += sumLines(team, 'blocks')
   totals.steals += sumLines(team, 'steals')
+  totals.personalFouls += sumLines(team, 'personalFouls')
+  totals.technicalFouls += sumLines(team, 'technicalFouls')
+  totals.fastBreakPoints += team.fastBreakPoints
+  totals.pointsOffTurnovers += team.pointsOffTurnovers
   for (const type of PLAY_TYPES) {
     totals.playTypeAttempts[type] += team.shotsByPlayType[type].attempted
     totals.playTypeMakes[type] += team.shotsByPlayType[type].made
@@ -120,12 +135,12 @@ function addGame(totals: Totals, result: MatchResult): void {
   addTeamGame(totals, result.away, result.home, minutes)
 }
 
-/** One league-average stat with its real-world target range. */
+/** One league-average stat with its real-world target range (no range = reported only). */
 interface Metric {
   label: string
   value: number
-  min: number
-  max: number
+  min?: number
+  max?: number
   digits: number
 }
 
@@ -159,6 +174,32 @@ function metrics(t: Totals): Metric[] {
     { label: 'Blocks / team-game', value: t.blocks / t.teamGames, min: 4.5, max: 5.5, digits: 2 },
     { label: 'Steals / team-game', value: t.steals / t.teamGames, min: 7, max: 8, digits: 2 },
     {
+      label: 'Personal fouls / team-game',
+      value: t.personalFouls / t.teamGames,
+      min: 19,
+      max: 21,
+      digits: 1,
+    },
+    {
+      label: 'Technicals / team-game',
+      value: t.technicalFouls / t.teamGames,
+      min: 0.4,
+      max: 0.8,
+      digits: 2,
+    },
+    {
+      label: 'Fast-break points / team-game',
+      value: t.fastBreakPoints / t.teamGames,
+      min: 12,
+      max: 16,
+      digits: 1,
+    },
+    {
+      label: 'Points off TO / team-game',
+      value: t.pointsOffTurnovers / t.teamGames,
+      digits: 1,
+    },
+    {
       label: 'Overtime rate (games)',
       value: t.overtimeGames / t.games,
       min: 0.05,
@@ -168,19 +209,20 @@ function metrics(t: Totals): Metric[] {
   ]
 }
 
-/** Formats one metric as a table row with a PASS / OFF marker. */
+/** Formats one metric as a table row with a PASS / OFF marker (or "report" without a target). */
 function metricRow(m: Metric): string {
+  const value = m.value.toFixed(m.digits).padStart(8)
+  if (m.min === undefined || m.max === undefined) {
+    return `${m.label.padEnd(30)} ${value}   ${'—'.padEnd(14)} report`
+  }
   const ok = m.value >= m.min && m.value <= m.max
   const target = `${m.min.toFixed(m.digits)}–${m.max.toFixed(m.digits)}`
-  return `${m.label.padEnd(30)} ${m.value.toFixed(m.digits).padStart(8)}   ${target.padEnd(14)} ${ok ? 'PASS' : 'OFF'}`
+  return `${m.label.padEnd(30)} ${value}   ${target.padEnd(14)} ${ok ? 'PASS' : 'OFF'}`
 }
 
 /** Prints the league averages vs targets and the shot mix by play type. */
 function printReport(t: Totals): void {
-  console.log(`\n${t.games} games, ${t.teamGames} team-games\n`)
-  console.log(`${'Metric'.padEnd(30)} ${'Sim'.padStart(8)}   ${'Target'.padEnd(14)} Result`)
-  console.log('-'.repeat(64))
-  for (const m of metrics(t)) console.log(metricRow(m))
+  printMetrics(`${t.games} games, ${t.teamGames} team-games`, metrics(t))
 
   console.log(`\n${'Play type'.padEnd(12)} ${'Share of FGA'.padStart(12)} ${'FG%'.padStart(7)}`)
   for (const type of PLAY_TYPES) {
@@ -189,6 +231,14 @@ function printReport(t: Totals): void {
     const pct = (t.playTypeMakes[type] / attempts).toFixed(3)
     console.log(`${type.padEnd(12)} ${share.padStart(12)} ${pct.padStart(7)}`)
   }
+}
+
+/** Prints a list of metrics under a header. */
+function printMetrics(title: string, list: readonly Metric[]): void {
+  console.log(`\n${title}`)
+  console.log(`${'Metric'.padEnd(30)} ${'Sim'.padStart(8)}   ${'Target'.padEnd(14)} Result`)
+  console.log('-'.repeat(64))
+  for (const m of list) console.log(metricRow(m))
 }
 
 /** Generates the two average teams for game `index` of a league seeded with `seed`. */
@@ -234,6 +284,43 @@ function runLeague(games: number, seed: number): Totals {
     addGame(totals, play(a, b, i, seed))
   }
   return totals
+}
+
+/** A copy of a team under a new id (and new player ids), so a team can play itself. */
+function copyTeam(team: MatchTeam, id: string): MatchTeam {
+  const roster = team.roster.map((p, i) => ({ ...p, id: `${id}-p${i + 1}` }))
+  return { ...team, id, roster }
+}
+
+/** Population standard deviation. */
+function standardDeviation(values: readonly number[]): number {
+  const mean = values.reduce((s, v) => s + v, 0) / values.length
+  return Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length)
+}
+
+/**
+ * Identical-team games: each generated team plays an exact copy of itself, home court
+ * alternating. Every difference in the result is randomness (plus home court), which is what
+ * the margin spread and overtime rate are meant to measure.
+ */
+function runIdentical(games: number, seed: number): Metric[] {
+  const margins: number[] = []
+  let overtimes = 0
+  let homeWins = 0
+  for (let i = 0; i < games; i++) {
+    const [team] = averageTeams(seed + 500, i)
+    const result = play(copyTeam(team, 'A'), copyTeam(team, 'B'), i, seed)
+    margins.push(result.home.points - result.away.points)
+    if (result.periodsPlayed > PRO_RULES.periods) overtimes++
+    if (result.home.points > result.away.points) homeWins++
+  }
+  const homeMargin = margins.reduce((s, m) => s + m, 0) / games
+  return [
+    { label: 'Margin SD (points)', value: standardDeviation(margins), min: 13, max: 15, digits: 1 },
+    { label: 'Overtime rate (games)', value: overtimes / games, min: 0.05, max: 0.07, digits: 3 },
+    { label: 'Home win rate', value: homeWins / games, digits: 3 },
+    { label: 'Home margin (points)', value: homeMargin, digits: 2 },
+  ]
 }
 
 /** Running point and possession totals for one side of a matchup across many games. */
@@ -347,6 +434,10 @@ function main(): void {
   const seed = numberArg('seed', 1)
   const started = Date.now()
   printReport(runLeague(games, seed))
+  printMetrics(
+    `Identical teams (${games} games, each team vs. a copy of itself)`,
+    runIdentical(games, seed),
+  )
   if (process.argv.includes('--balance')) runBalance(numberArg('balance-games', games), seed)
   console.log(`\nDone in ${((Date.now() - started) / 1000).toFixed(1)} s`)
 }

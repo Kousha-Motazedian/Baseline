@@ -50,12 +50,9 @@ describe('small rosters', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
     }
   })
 
-  // BUG (documented, see review): with no eligible sub, fouls.ts leaves a disqualified player on
-  // the floor and he keeps accruing fouls and stats with no penalty at all. Pro rules assess a
-  // technical foul (opponent free throw) for each further foul; FIBA plays on with four. Either
-  // way the 6th+ foul should cost something, and the box score shouldn't show 9 fouls.
-  // Flip to `it` once fouls.ts handles the no-sub case.
-  it.fails('never lets a player exceed the foul limit, even with no bench', () => {
+  // Pro rule: with no eligible sub, a disqualified player stays on, and each further foul is
+  // charged as a technical (opponent free throw) instead of another personal foul.
+  it('never lets a player exceed the foul limit, even with no bench', () => {
     let overLimit = 0
     for (const r of fiveManSeries()) {
       for (const line of sides(r, 'F')[0].players) {

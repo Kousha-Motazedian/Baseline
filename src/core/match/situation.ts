@@ -4,11 +4,17 @@ import type { Contesters } from './contest.ts'
 import { blendByHelp } from './contest.ts'
 import type { GameState, TeamState } from './state.ts'
 import { isClutch } from './state.ts'
-import { CLUTCH_EDGE_WEIGHT, CLUTCH_MARGIN, CLUTCH_SECONDS } from './tuning.ts'
+import {
+  CLUTCH_EDGE_WEIGHT,
+  CLUTCH_MARGIN,
+  CLUTCH_SECONDS,
+  ROAD_COMPOSURE_SHIELD,
+  ROAD_CROWD_EDGE,
+} from './tuning.ts'
 import type { PlayType } from './types.ts'
 
 /**
- * Situational modifiers (game-day form and clutch composure). They apply to BOTH ends of the
+ * Situational modifiers (game-day form, clutch composure and the road crowd). They apply to BOTH ends of the
  * floor: an offensive player's good day is offset by a defender's good day, so neither side
  * gets a systematic boost from these effects.
  */
@@ -24,9 +30,20 @@ export function clutchEdge(game: GameState, player: Player): number {
   return CLUTCH_EDGE_WEIGHT * normalizeRating(player.attributes.composure)
 }
 
-/** Form plus clutch composure for one player: everything personal about today's situation. */
+/**
+ * The hostile-crowd penalty for a road player (zero at home). Composure shields against it: an
+ * average player takes the full ROAD_CROWD_EDGE, a Composure-20 player only a fifth of it, a
+ * Composure-1 player nearly twice as much.
+ */
+export function roadEdge(team: TeamState, player: Player): number {
+  if (team.isHome) return 0
+  const exposure = 1 - ROAD_COMPOSURE_SHIELD * normalizeRating(player.attributes.composure)
+  return -ROAD_CROWD_EDGE * Math.max(0, exposure)
+}
+
+/** Form, clutch composure and the road crowd for one player: everything about today's situation. */
 export function personalEdge(game: GameState, team: TeamState, player: Player): number {
-  return formEdge(team, player) + clutchEdge(game, player)
+  return formEdge(team, player) + clutchEdge(game, player) + roadEdge(team, player)
 }
 
 /**
@@ -44,5 +61,6 @@ export function contestSituationalEdge(
     playType,
     personalEdge(game, defense, contesters.defender),
     personalEdge(game, defense, contesters.rimProtector),
+    contesters.helpFactor,
   )
 }

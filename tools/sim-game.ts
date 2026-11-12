@@ -76,6 +76,7 @@ function totalsLine(team: TeamResult): PlayerLine {
     blocks: sum('blocks'),
     turnovers: sum('turnovers'),
     personalFouls: sum('personalFouls'),
+    technicalFouls: sum('technicalFouls'),
   }
 }
 
@@ -88,7 +89,10 @@ function printBoxScore(team: TeamResult): void {
   console.log(header.join(' '))
   for (const line of team.players) console.log(playerRow(line))
   console.log(playerRow(totalsLine(team)))
-  console.log(`Possessions: ${team.possessions}`)
+  console.log(
+    `Possessions: ${team.possessions}  Fast-break pts: ${team.fastBreakPoints}  ` +
+      `Pts off TO: ${team.pointsOffTurnovers}  Technicals: ${total(team, 'technicalFouls')}`,
+  )
 }
 
 /** Prints the score by period, e.g. "Q1 Q2 Q3 Q4 OT". */

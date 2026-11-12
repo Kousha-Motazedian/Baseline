@@ -1,8 +1,10 @@
 import { createRng } from '../shared/rng.ts'
 import type { LeagueRules } from '../world/rules.ts'
-import { simulatePossession } from './possession.ts'
+import type { PossessionStart } from './possession.ts'
+import { HALF_COURT_START, simulatePossession } from './possession.ts'
 import type { GameState, TeamState } from './state.ts'
 import { createTeamState, log } from './state.ts'
+import { resetTeamFouls } from './teamFouls.ts'
 import type { MatchResult, MatchTeam, TeamResult } from './types.ts'
 
 /** Everything needed to simulate one game. */
@@ -22,17 +24,24 @@ export function periodStarter(game: GameState, tipWinner: TeamState): TeamState 
   return game.period === 2 || game.period === 3 ? tipLoser : tipWinner
 }
 
-/** Simulates one period, alternating possessions until the clock hits zero. */
+/**
+ * Simulates one period, alternating possessions until the clock hits zero. How each possession
+ * ended (a turnover, a fast-break chance) carries into how the next one starts.
+ */
 function playPeriod(game: GameState, lengthSeconds: number, starter: TeamState): void {
   game.clock = lengthSeconds
   game.home.periodPoints[game.period - 1] ??= 0
   game.away.periodPoints[game.period - 1] ??= 0
+  resetTeamFouls(game)
   let offense = starter
+  let start: PossessionStart = HALF_COURT_START
   while (game.clock > 0) {
     const defense = offense === game.home ? game.away : game.home
-    simulatePossession(game, offense, defense)
+    const end = simulatePossession(game, offense, defense, start)
+    start = { fastBreak: end.fastBreak, afterTurnover: end.turnover }
     offense = defense
   }
+  // Not a team action; by convention it's attributed to the team that started the period.
   log(game, starter, `End of ${periodName(game)}`)
 }
 
@@ -52,6 +61,9 @@ function toTeamResult(team: TeamState): TeamResult {
     periodPoints: team.periodPoints,
     possessions: team.possessions,
     shotsByPlayType: team.shotsByPlayType,
+    fastBreakPoints: team.fastBreakPoints,
+    pointsOffTurnovers: team.pointsOffTurnovers,
+    teamRebounds: team.teamRebounds,
     players: team.team.roster.map((p) => team.lines.get(p.id)).filter((l) => l !== undefined),
   }
 }

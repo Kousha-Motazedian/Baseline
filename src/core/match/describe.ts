@@ -7,6 +7,7 @@ const SHOT_DESCRIPTIONS: Record<PlayType, string> = {
   postUp: 'post hook',
   midRange: 'mid-range jumper',
   three: '3-pt jumper',
+  putback: 'putback',
 }
 
 /** Describes a shot for play-by-play, e.g. "driving layup". */

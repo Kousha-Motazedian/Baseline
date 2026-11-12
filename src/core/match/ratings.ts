@@ -33,22 +33,26 @@ const OFFENSIVE_WEIGHTS: Record<PlayType, AttributeWeights> = {
   postUp: { postScoring: 0.6, strength: 0.25, finishing: 0.15 },
   midRange: { midRange: 0.8, offensiveIq: 0.2 },
   three: { threePoint: 0.85, offensiveIq: 0.15 },
+  // Putbacks: finishing in traffic, plus the second jump and nose for the ball of a rebounder.
+  putback: { finishing: 0.45, vertical: 0.3, offensiveRebounding: 0.25 },
 }
 
-/** Which attributes make a defender good at stopping each play type. */
-//
 // Why defense leans more on shared physical/effort attributes (Quickness, Strength, Vertical,
 // Hustle) than offense does: on-ball defense is mostly about staying in front, length and
 // effort, while scoring is mostly skill. This is also the main lever that makes offensive
 // attributes worth somewhat more than defensive ones (target ≈ 1.4 : 1, see the design doc).
+/** Which attributes make a defender good at stopping each play type. */
 const DEFENSIVE_WEIGHTS: Record<PlayType, AttributeWeights> = {
   drive: { perimeterDefense: 0.5, quickness: 0.3, defensiveIq: 0.15, hustle: 0.05 },
   // Cuts are stopped by awareness and effort more than by on-ball skill; the rim protector
   // (blended in by contest.ts) covers the finish.
   cut: { defensiveIq: 0.45, perimeterDefense: 0.2, hustle: 0.2, quickness: 0.15 },
   postUp: { interiorDefense: 0.55, strength: 0.45 },
-  midRange: { perimeterDefense: 0.6, quickness: 0.2, defensiveIq: 0.1, hustle: 0.1 },
-  three: { perimeterDefense: 0.6, quickness: 0.2, defensiveIq: 0.1, hustle: 0.1 },
+  midRange: { perimeterDefense: 0.55, quickness: 0.25, defensiveIq: 0.1, hustle: 0.1 },
+  three: { perimeterDefense: 0.55, quickness: 0.25, defensiveIq: 0.1, hustle: 0.1 },
+  // Contesting a putback is about being there and going straight up (the rim protector, blended
+  // in by contest.ts, does most of it).
+  putback: { interiorDefense: 0.4, vertical: 0.3, strength: 0.15, hustle: 0.15 },
 }
 
 /** How good a player is at the offensive skill a play type needs (1–20 scale). */
@@ -91,10 +95,44 @@ export function offensiveReboundSkill(player: Player): number {
 
 /** A player's defensive rebounding strength (1–20 scale). */
 export function defensiveReboundSkill(player: Player): number {
-  return blend(player, { defensiveRebounding: 0.6, strength: 0.2, vertical: 0.2 })
+  // Boxing out is as much body and effort as skill (and the board can start a fast break, which
+  // gives Defensive Rebounding extra value), so the shared attributes carry 45%.
+  return blend(player, { defensiveRebounding: 0.55, strength: 0.25, vertical: 0.2 })
 }
 
 /** A player's shot-blocking threat (1–20 scale). */
 export function blockSkill(player: Player): number {
   return blend(player, { shotBlocking: 0.6, vertical: 0.25, defensiveIq: 0.15 })
+}
+
+/**
+ * How suited a player is to bring the ball up and run the offense (1–20 scale). Guards usually
+ * win this, so they start most actions and throw most of the passes.
+ */
+export function handlerSkill(player: Player): number {
+  return blend(player, { ballHandling: 0.45, passing: 0.35, offensiveIq: 0.2 })
+}
+
+/** How safely a player delivers a pass under pressure (1–20 scale). */
+export function passSecuritySkill(player: Player): number {
+  return blend(player, { passing: 0.5, offensiveIq: 0.3, ballHandling: 0.2 })
+}
+
+/**
+ * How dangerous a ball handler is off the dribble (1–20 scale): the threat that forces
+ * reach-ins and blocking fouls.
+ */
+export function penetrationSkill(player: Player): number {
+  return blend(player, { driving: 0.6, quickness: 0.4 })
+}
+
+/** How well a defender stays in front without fouling (1–20 scale), the counter to penetration. */
+export function containmentSkill(defender: Player): number {
+  // Mostly lateral movement: whether a defender has to reach is about his feet more than technique.
+  return blend(defender, { quickness: 0.6, perimeterDefense: 0.4 })
+}
+
+/** How fast a player gets back on defense (1–20 scale), the counter to fast breaks. */
+export function retreatSkill(player: Player): number {
+  return blend(player, { speed: 0.6, hustle: 0.4 })
 }

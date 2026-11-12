@@ -140,12 +140,16 @@ describe('foul-outs', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
     expect(checked).toBeGreaterThan(5)
   })
 
-  it('gives fouled-out starters less than a full game of minutes', () => {
+  it('gives players who fouled out and were replaced less than a full game of minutes', () => {
+    // Only players who actually left count: once the whole bench is gone, the pro rule keeps the
+    // last disqualified player on the floor (see the no-bench tests).
     const [home, away] = foulHeavyMatchup()
     let fouledOut = 0
     for (const r of playSeries(home, away, 10, { alternateHome: false })) {
-      for (const line of r.away.players) {
-        if (line.personalFouls < PRO_RULES.personalFoulLimit) continue
+      for (const entry of r.playByPlay) {
+        const name = /^(\S+) fouls out;/.exec(entry.text)?.[1]
+        const line = r.away.players.find((l) => l.name.endsWith(` ${name}`))
+        if (!name || !line) continue
         expect(line.secondsPlayed).toBeLessThan(gameSeconds(r, PRO_RULES))
         fouledOut++
       }

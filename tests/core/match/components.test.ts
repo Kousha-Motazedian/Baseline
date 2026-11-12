@@ -1,20 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { recordFoul } from '../../../src/core/match/fouls.ts'
+import { commitFoul } from '../../../src/core/match/fouls.ts'
 import { freeThrowChance } from '../../../src/core/match/freeThrows.ts'
 import { periodName, periodStarter } from '../../../src/core/match/game.ts'
 import { actionSeconds } from '../../../src/core/match/possession.ts'
 import { offensiveReboundChance } from '../../../src/core/match/rebound.ts'
 import type { ShotContext } from '../../../src/core/match/shot.ts'
 import { makeChance, shootingFoulChance } from '../../../src/core/match/shot.ts'
-import { clutchEdge, contestSituationalEdge } from '../../../src/core/match/situation.ts'
+import { clutchEdge, contestSituationalEdge, roadEdge } from '../../../src/core/match/situation.ts'
 import type { GameState } from '../../../src/core/match/state.ts'
-import { isClutch, rollForm, runClock } from '../../../src/core/match/state.ts'
+import { formSpread, isClutch, rollForm, runClock } from '../../../src/core/match/state.ts'
 import { stealChance, turnoverChance } from '../../../src/core/match/turnover.ts'
 import {
+  ACTION_TIMING,
   BASE_FREE_THROW,
+  BASE_HANDLER_TURNOVER,
   BASE_MAKE,
-  BASE_TURNOVER,
-  FORM_EDGE_MAX,
+  FORM_CLAMP_SDS,
   HOME_SHOOTING_EDGE,
 } from '../../../src/core/match/tuning.ts'
 import type { PlayType } from '../../../src/core/match/types.ts'
@@ -72,14 +73,14 @@ describe('freeThrowChance', () => {
 describe('turnoverChance / stealChance', () => {
   it('is the base rate for an even matchup and falls with ball security', () => {
     const avg = makePlayer({ id: 'a' })
-    expect(turnoverChance(avg, avg)).toBeCloseTo(BASE_TURNOVER, 10)
+    expect(turnoverChance(avg, avg)).toBeCloseTo(BASE_HANDLER_TURNOVER, 10)
     const secure = makePlayer({
       id: 'b',
       attributes: { ballHandling: 20, offensiveIq: 20, passing: 20 },
     })
     const pest = makePlayer({ id: 'c', attributes: { stealing: 20, quickness: 20 } })
-    expect(turnoverChance(secure, avg)).toBeLessThan(BASE_TURNOVER)
-    expect(turnoverChance(avg, pest)).toBeGreaterThan(BASE_TURNOVER)
+    expect(turnoverChance(secure, avg)).toBeLessThan(BASE_HANDLER_TURNOVER)
+    expect(turnoverChance(avg, pest)).toBeGreaterThan(BASE_HANDLER_TURNOVER)
   })
 
   it('treats a positive situational edge as good for the handler', () => {
@@ -96,27 +97,33 @@ describe('turnoverChance / stealChance', () => {
 })
 
 describe('makeChance', () => {
-  it('equals the base rate for an even, average matchup on the road with no form', () => {
+  const logit = (p: number): number => Math.log(p / (1 - p))
+
+  it('is the base rate minus only the road-crowd penalty for an even matchup on the road', () => {
     const game = makeGameState({
       home: makeFlatTeam('A', 10.5),
       away: makeFlatTeam('B', 10.5),
       form: 0,
     })
-    // Away team shooting, slot 0 (191 cm) vs slot 0 (191 cm) on a jumper: every edge is zero.
+    // Away team shooting, slot 0 (191 cm) vs slot 0 (191 cm) on a jumper: every skill edge is
+    // zero, and the home defender feels no crowd, so only the shooter's road penalty remains.
+    const shooter = slot(game.away.onCourt, 0)
     for (const type of ['three', 'midRange'] as const) {
-      expect(makeChance(shotContext(game, type, 0, false))).toBeCloseTo(BASE_MAKE[type], 10)
+      const p = makeChance(shotContext(game, type, 0, false))
+      expect(logit(p) - logit(BASE_MAKE[type])).toBeCloseTo(roadEdge(game.away, shooter), 10)
     }
   })
 
-  it('adds exactly the home edge for the home team', () => {
+  it('adds the home edge plus the road defender’s crowd penalty for the home team', () => {
     const game = makeGameState({
       home: makeFlatTeam('A', 10.5),
       away: makeFlatTeam('B', 10.5),
       form: 0,
     })
     const home = makeChance(shotContext(game, 'three', 0, true))
-    const logit = (p: number): number => Math.log(p / (1 - p))
-    expect(logit(home) - logit(BASE_MAKE.three)).toBeCloseTo(HOME_SHOOTING_EDGE, 10)
+    const defender = slot(game.away.onCourt, 0)
+    const expected = HOME_SHOOTING_EDGE - roadEdge(game.away, defender)
+    expect(logit(home) - logit(BASE_MAKE.three)).toBeCloseTo(expected, 10)
   })
 
   it('stays strictly between 0 and 1 for the most extreme matchups', () => {
@@ -202,28 +209,37 @@ describe('shootingFoulChance', () => {
 describe('offensiveReboundChance', () => {
   it('is lower after a free throw and rises with offensive rebounding and size', () => {
     const game = makeGameState({ home: makeFlatTeam('A', 10.5), away: makeFlatTeam('B', 10.5) })
-    const live = offensiveReboundChance(game.home, game.away, false)
-    expect(offensiveReboundChance(game.home, game.away, true)).toBeLessThan(live)
+    const live = offensiveReboundChance(game.home, game.away, 'shot')
+    expect(offensiveReboundChance(game.home, game.away, 'freeThrow')).toBeLessThan(live)
+    expect(offensiveReboundChance(game.home, game.away, 'block')).toBeLessThan(live)
     const crashers = makeGameState({
       home: patchTeam(makeFlatTeam('A', 10.5), { offensiveRebounding: 18 }),
       away: makeFlatTeam('B', 10.5),
     })
-    expect(offensiveReboundChance(crashers.home, crashers.away, false)).toBeGreaterThan(live)
+    expect(offensiveReboundChance(crashers.home, crashers.away, 'shot')).toBeGreaterThan(live)
   })
 })
 
 describe('actionSeconds', () => {
-  it('stays within the documented ranges and never exceeds the shot clock', () => {
+  it('stays within each action kind’s range and never exceeds the shot clock', () => {
     const rng = createRng(5)
     for (let i = 0; i < 5_000; i++) {
-      const first = actionSeconds(rng, false, 24)
-      expect(first).toBeGreaterThanOrEqual(4)
-      expect(first).toBeLessThanOrEqual(24)
-      const second = actionSeconds(rng, true, 14)
-      expect(second).toBeGreaterThanOrEqual(1)
-      expect(second).toBeLessThanOrEqual(11)
-      expect(actionSeconds(rng, false, 6)).toBeLessThanOrEqual(6)
+      for (const [kind, { min, spread }] of Object.entries(ACTION_TIMING)) {
+        const seconds = actionSeconds(rng, kind as keyof typeof ACTION_TIMING, 24)
+        expect(seconds).toBeGreaterThanOrEqual(Math.min(min, 24))
+        expect(seconds).toBeLessThanOrEqual(Math.min(min + spread, 24))
+      }
+      expect(actionSeconds(rng, 'halfCourt', 6)).toBeLessThanOrEqual(6)
     }
+  })
+
+  it('keeps putbacks and fast breaks much quicker than half-court sets', () => {
+    expect(ACTION_TIMING.putback.min + ACTION_TIMING.putback.spread).toBeLessThan(
+      ACTION_TIMING.halfCourt.min,
+    )
+    expect(ACTION_TIMING.transition.min + ACTION_TIMING.transition.spread / 2).toBeLessThan(
+      ACTION_TIMING.halfCourt.min + ACTION_TIMING.halfCourt.spread / 2,
+    )
   })
 })
 
@@ -297,34 +313,53 @@ describe('clutch time', () => {
       away: makeFlatTeam('B', 10),
       form: 0,
     })
-    const rimProtector = slot(game.away.onCourt, 4)
-    const defender = slot(game.away.onCourt, 0)
-    game.away.form.set(rimProtector.id, 0.2)
+    // The home team defends, so no road-crowd penalty muddies the comparison.
+    const rimProtector = slot(game.home.onCourt, 4)
+    const defender = slot(game.home.onCourt, 0)
+    game.home.form.set(rimProtector.id, 0.2)
     const contesters = { defender, rimProtector }
-    expect(contestSituationalEdge(game, game.away, contesters, 'three')).toBe(0)
-    expect(contestSituationalEdge(game, game.away, contesters, 'drive')).toBeCloseTo(0.1, 12)
+    expect(contestSituationalEdge(game, game.home, contesters, 'three')).toBe(0)
+    expect(contestSituationalEdge(game, game.home, contesters, 'drive')).toBeCloseTo(0.1, 12)
   })
 })
 
 describe('rollForm', () => {
-  it('stays within ±FORM_EDGE_MAX and swings less for consistent players', () => {
+  /** 4,000 form rolls for a player with the given Consistency. */
+  function rolls(consistency: number): number[] {
     const rng = createRng(3)
-    const spread = (consistency: number): number => {
-      const p = makePlayer({ id: 'a', consistency })
-      let max = 0
-      for (let i = 0; i < 2_000; i++) {
-        const form = rollForm(rng, p)
-        expect(Math.abs(form)).toBeLessThanOrEqual(FORM_EDGE_MAX)
-        max = Math.max(max, Math.abs(form))
-      }
-      return max
+    const p = makePlayer({ id: 'a', consistency })
+    return Array.from({ length: 4_000 }, () => rollForm(rng, p))
+  }
+
+  it('is normal-shaped around 0 with the documented spread, clamped symmetrically', () => {
+    for (const consistency of [1, 10, 20]) {
+      const forms = rolls(consistency)
+      const sd = formSpread(consistency)
+      const mean = forms.reduce((s, f) => s + f, 0) / forms.length
+      const measured = Math.sqrt(forms.reduce((s, f) => s + (f - mean) ** 2, 0) / forms.length)
+      // SE of the mean ≈ sd / 63; the clamp at 2.5 SD trims the SD by ~3%.
+      expect(Math.abs(mean)).toBeLessThan(sd / 15)
+      expect(measured / sd).toBeGreaterThan(0.9)
+      expect(measured / sd).toBeLessThan(1.05)
+      for (const f of forms) expect(Math.abs(f)).toBeLessThanOrEqual(FORM_CLAMP_SDS * sd + 1e-12)
+      // Normal, not uniform: about 68% of rolls fall within 1 SD (a uniform roll would give 58%).
+      const within = forms.filter((f) => Math.abs(f) <= sd).length / forms.length
+      expect(within).toBeGreaterThan(0.64)
+      expect(within).toBeLessThan(0.73)
     }
-    expect(spread(20)).toBeLessThan(FORM_EDGE_MAX / 10)
-    expect(spread(1)).toBeGreaterThan(FORM_EDGE_MAX * 0.95)
+  })
+
+  it('swings far more for inconsistent players (Consistency 1 vs. 20 ≈ 10x)', () => {
+    expect(formSpread(1) / formSpread(20)).toBeGreaterThan(8)
+    expect(formSpread(10.5)).toBeLessThan(formSpread(5))
+    expect(formSpread(10.5)).toBeGreaterThan(formSpread(15))
+    // Out-of-scale values are clamped to the ends of the scale.
+    expect(formSpread(-5)).toBe(formSpread(1))
+    expect(formSpread(30)).toBe(formSpread(20))
   })
 })
 
-describe('recordFoul (foul-out substitution)', () => {
+describe('commitFoul (foul-out substitution)', () => {
   /** A 10-man flat team with chosen heights, so the closest-height rule is easy to check. */
   function teamWithHeights(heights: readonly number[]) {
     const team = makeFlatTeam('A', 10)
@@ -342,7 +377,7 @@ describe('recordFoul (foul-out substitution)', () => {
     const line = game.home.lines.get(big.id)
     if (!line) throw new Error('missing line')
     line.personalFouls = PRO_RULES.personalFoulLimit - 1
-    recordFoul(game, game.home, big)
+    commitFoul(game, game.home, big, 'Shooting foul')
     expect(line.personalFouls).toBe(PRO_RULES.personalFoulLimit)
     expect(slot(game.home.onCourt, 4).measurables.heightCm).toBe(208)
     expect(game.home.onCourt).not.toContain(big)
@@ -356,20 +391,28 @@ describe('recordFoul (foul-out substitution)', () => {
     const benchLine = game.home.lines.get(benchBig.id)
     if (!benchLine) throw new Error('missing line')
     benchLine.personalFouls = PRO_RULES.personalFoulLimit
+    game.home.disqualified.add(benchBig.id)
     const big = slot(game.home.onCourt, 4)
     const line = game.home.lines.get(big.id)
     if (!line) throw new Error('missing line')
     line.personalFouls = PRO_RULES.personalFoulLimit - 1
-    recordFoul(game, game.home, big)
+    commitFoul(game, game.home, big, 'Shooting foul')
     // 208 is out, so 205 and 220 are next; 205 is 7 cm away vs 8 cm.
     expect(slot(game.home.onCourt, 4).measurables.heightCm).toBe(205)
   })
 
-  it('keeps the player on the floor when nobody is left on the bench', () => {
+  it('pro, no bench: keeps the player on, and every further foul is a technical free throw', () => {
     const game = makeGameState({ home: makeFlatTeam('A', 10, 5), away: makeFlatTeam('B', 10) })
     const guard = slot(game.home.onCourt, 0)
-    for (let i = 0; i < PRO_RULES.personalFoulLimit + 2; i++) recordFoul(game, game.home, guard)
+    for (let i = 0; i < PRO_RULES.personalFoulLimit + 2; i++) {
+      commitFoul(game, game.home, guard, 'Shooting foul')
+    }
     expect(game.home.onCourt).toContain(guard)
-    expect(game.home.lines.get(guard.id)?.personalFouls).toBe(PRO_RULES.personalFoulLimit + 2)
+    const line = game.home.lines.get(guard.id)
+    expect(line?.personalFouls).toBe(PRO_RULES.personalFoulLimit)
+    // Two fouls past the limit = two technical free throws (plus one per real technical, if any).
+    const awayFta = [...game.away.lines.values()].reduce((s, l) => s + l.freeThrowsAttempted, 0)
+    expect(awayFta).toBe(2 + (line?.technicalFouls ?? 0))
+    expect(game.home.teamFouls).toBe(PRO_RULES.personalFoulLimit + 2)
   })
 })

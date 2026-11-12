@@ -6,6 +6,7 @@ import { expect } from 'vitest'
 import type { MatchResult, PlayerLine, TeamResult } from '../../src/core/match/types.ts'
 import { PLAY_TYPES } from '../../src/core/match/types.ts'
 import type { LeagueRules } from '../../src/core/world/rules.ts'
+import { attributedName, lastNameOwners } from './playByPlay.ts'
 import type { LineField } from './simulation.ts'
 import { gameSeconds, teamTotal } from './simulation.ts'
 
@@ -25,10 +26,11 @@ const COUNTING_FIELDS: readonly LineField[] = [
   'blocks',
   'turnovers',
   'personalFouls',
+  'technicalFouls',
 ]
 
 /** One player line: integer, non-negative stats with makes ≤ attempts and points that add up. */
-function checkLine(line: PlayerLine): void {
+function checkLine(line: PlayerLine, rules: LeagueRules): void {
   for (const field of COUNTING_FIELDS) {
     expect(Number.isInteger(line[field]), `${field} integer`).toBe(true)
     expect(line[field], field).toBeGreaterThanOrEqual(0)
@@ -41,6 +43,22 @@ function checkLine(line: PlayerLine): void {
   expect(line.threesMade).toBeLessThanOrEqual(line.fieldGoalsMade)
   expect(line.freeThrowsMade).toBeLessThanOrEqual(line.freeThrowsAttempted)
   expect(line.points).toBe(2 * line.fieldGoalsMade + line.threesMade + line.freeThrowsMade)
+  // A disqualified player is never charged past the limit (pro: further fouls become technicals).
+  expect(line.personalFouls).toBeLessThanOrEqual(rules.personalFoulLimit)
+  expect(line.technicalFouls).toBeLessThanOrEqual(rules.technicalFoulsToEject)
+}
+
+/**
+ * True if the team may have played short-handed: under a "play short-handed" rule, more players
+ * were disqualified than it had substitutes.
+ */
+function mayPlayShortHanded(team: TeamResult, rules: LeagueRules): boolean {
+  if (rules.noBenchDisqualification !== 'playShorthanded') return false
+  const disqualified = team.players.filter(
+    (l) =>
+      l.personalFouls >= rules.personalFoulLimit || l.technicalFouls >= rules.technicalFoulsToEject,
+  ).length
+  return disqualified > team.players.length - 5
 }
 
 /** One team's totals: points, periods, play-type tallies and minutes all agree. */
@@ -50,8 +68,14 @@ function checkTeam(
   result: MatchResult,
   rules: LeagueRules,
 ): void {
-  team.players.forEach(checkLine)
+  team.players.forEach((line) => checkLine(line, rules))
   expect(teamTotal(team, 'points')).toBe(team.points)
+  for (const extra of [team.fastBreakPoints, team.pointsOffTurnovers, team.teamRebounds]) {
+    expect(Number.isInteger(extra)).toBe(true)
+    expect(extra).toBeGreaterThanOrEqual(0)
+  }
+  expect(team.fastBreakPoints).toBeLessThanOrEqual(team.points)
+  expect(team.pointsOffTurnovers).toBeLessThanOrEqual(team.points)
   expect(team.periodPoints).toHaveLength(result.periodsPlayed)
   expect(team.periodPoints.reduce((s, p) => s + p, 0)).toBe(team.points)
   for (const p of team.periodPoints) expect(p).toBeGreaterThanOrEqual(0)
@@ -62,8 +86,15 @@ function checkTeam(
   expect(team.shotsByPlayType.three.attempted).toBe(teamTotal(team, 'threesAttempted'))
   expect(team.shotsByPlayType.three.made).toBe(teamTotal(team, 'threesMade'))
 
-  // Five players on the floor for every second of the game (floating-point sums, hence toBeCloseTo).
-  expect(teamTotal(team, 'secondsPlayed')).toBeCloseTo(5 * gameSeconds(result, rules), 6)
+  // Five players on the floor for every second of the game (floating-point sums, hence toBeCloseTo),
+  // unless the team ran out of players under a play-short-handed rule (then 1–5 at a time).
+  const seconds = gameSeconds(result, rules)
+  if (mayPlayShortHanded(team, rules)) {
+    expect(teamTotal(team, 'secondsPlayed')).toBeLessThanOrEqual(5 * seconds + 1e-6)
+    expect(teamTotal(team, 'secondsPlayed')).toBeGreaterThanOrEqual(seconds - 1e-6)
+  } else {
+    expect(teamTotal(team, 'secondsPlayed')).toBeCloseTo(5 * seconds, 6)
+  }
 
   // Labels can't outnumber the events they label.
   expect(teamTotal(team, 'assists')).toBeLessThanOrEqual(teamTotal(team, 'fieldGoalsMade'))
@@ -72,11 +103,15 @@ function checkTeam(
     teamTotal(opponent, 'fieldGoalsAttempted') - teamTotal(opponent, 'fieldGoalsMade')
   expect(teamTotal(team, 'blocks')).toBeLessThanOrEqual(opponentMisses)
 
-  // Every missed field goal and every missed final free throw produces exactly one rebound, so the
-  // rebounds on this team's misses sit between its FG misses and FG misses + FT misses.
+  // Every missed field goal and every missed final free throw produces exactly one rebound (a
+  // block out of bounds is an offensive team rebound), so the rebounds on this team's misses sit
+  // between its FG misses and FG misses + FT misses (technical free throws never get one).
   const missedFg = teamTotal(team, 'fieldGoalsAttempted') - teamTotal(team, 'fieldGoalsMade')
   const missedFt = teamTotal(team, 'freeThrowsAttempted') - teamTotal(team, 'freeThrowsMade')
-  const rebounds = teamTotal(team, 'offensiveRebounds') + teamTotal(opponent, 'defensiveRebounds')
+  const rebounds =
+    teamTotal(team, 'offensiveRebounds') +
+    teamTotal(opponent, 'defensiveRebounds') +
+    team.teamRebounds
   expect(rebounds).toBeGreaterThanOrEqual(missedFg)
   expect(rebounds).toBeLessThanOrEqual(missedFg + missedFt)
 }
@@ -106,6 +141,20 @@ function checkPlayByPlay(result: MatchResult, rules: LeagueRules): void {
   expect(last?.period).toBe(result.periodsPlayed)
 }
 
+/**
+ * The play-by-play convention: every line's teamId is the team that performed the action (the
+ * shooter's, rebounder's, stealer's or blocker's team, or the team called for a foul). Lines about
+ * a last name that appears on both teams are skipped.
+ */
+function checkActorTeams(result: MatchResult): void {
+  const owners = lastNameOwners(result)
+  for (const entry of result.playByPlay) {
+    const name = attributedName(entry.text)
+    const owner = name === undefined ? undefined : owners.get(name)
+    if (owner !== undefined) expect(entry.teamId, entry.text).toBe(owner)
+  }
+}
+
 /** Possession counts: they alternate within a period, so they can differ by at most one per period. */
 function checkPossessions(result: MatchResult, rules: LeagueRules): void {
   // Regulation: the tip winner starts Q1 and Q4, the other team Q2 and Q3, so the extra
@@ -122,5 +171,6 @@ export function expectValidResult(result: MatchResult, rules: LeagueRules): void
   checkTeam(result.home, result.away, result, rules)
   checkTeam(result.away, result.home, result, rules)
   checkPlayByPlay(result, rules)
+  checkActorTeams(result)
   checkPossessions(result, rules)
 }
