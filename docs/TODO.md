@@ -11,6 +11,8 @@ Deferred fixes from code reviews. Tick an item off (or delete it) when it lands;
 
 - [ ] Navigation hardening: add `setWindowOpenHandler(() => ({ action: 'deny' }))` and a `will-navigate` guard. (`src/main/index.ts`)
 - [ ] Handle rejections from `loadURL` / `loadFile` / `whenReady().then(...)` instead of leaving them unhandled. (`src/main/index.ts`)
+- [ ] `ELECTRON_RENDERER_URL` is honoured in packaged builds too, so an environment variable can point the window (and its preload bridge) at any URL — only read it when `!app.isPackaged`. (`src/main/index.ts`)
+- [ ] Deny web permission requests (camera, notifications, etc.) by default with `session.setPermissionRequestHandler`; the game needs none. (`src/main/index.ts`)
 
 ## Preload
 
@@ -34,3 +36,7 @@ Deferred fixes from code reviews. Tick an item off (or delete it) when it lands;
 - [ ] Also ignore `.env`, `.env.*` and `coverage/`. (`.gitignore`)
 - [ ] ESLint and Prettier ignore all of `.claude/`, but git only ignores `.claude/worktrees/`, so any `.claude/` file committed later (e.g. `settings.json`) would never be linted or format-checked. Narrow both ignores to `.claude/worktrees/`. (`eslint.config.js`, `.prettierignore`)
 - [ ] A few comment lines run past the 100-column `printWidth` (Prettier doesn't wrap comments). Cosmetic. (`src/main/index.ts`, `electron.vite.config.ts`)
+- [ ] The "JSDoc above every function" rule is not lint-enforced; consider `eslint-plugin-jsdoc` (`jsdoc/require-jsdoc`) — a new dependency, so ask first. (`eslint.config.js`, `CLAUDE.md`)
+- [ ] `dist/` is git-ignored but not ESLint-ignored (Prettier is fine, it honours `.gitignore`); add it before a packaging step starts writing there. (`eslint.config.js`)
+- [ ] Consider `noUncheckedIndexedAccess` before the array-heavy sim code grows; `pick()` already casts as if it were on. (`tsconfig.base.json`, `src/core/shared/rng.ts`)
+- [ ] Folder map doesn't list `docs/` (now home of `TODO.md`). (`CLAUDE.md`)
