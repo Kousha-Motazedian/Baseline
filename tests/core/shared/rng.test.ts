@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createRng } from '../../../src/core/shared/rng'
+import { createRng } from '../../../src/core/shared/rng.ts'
 
 describe('createRng', () => {
   it('produces the same sequence for the same seed', () => {

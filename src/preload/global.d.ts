@@ -1,4 +1,4 @@
-import type { BaselineApi } from './api'
+import type { BaselineApi } from './api.d.ts'
 
 declare global {
   interface Window {

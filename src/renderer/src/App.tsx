@@ -1,4 +1,4 @@
-import { createRng } from '../../core/shared/rng'
+import { createRng } from '../../core/shared/rng.ts'
 
 /** Placeholder home screen; proves the UI can call into the headless core. */
 export function App() {

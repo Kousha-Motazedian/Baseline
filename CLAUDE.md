@@ -13,6 +13,7 @@ A desktop basketball management simulation (GM/coach career game). The player bu
 
 - Dev: `npm run dev` · Build: `npm run build`
 - Test: `npm test` · Lint: `npm run lint` · Typecheck: `npm run typecheck`
+- Match sims: `npm run sim:game [-- seed]` (one game, box score) · `npm run sim:batch [-- --balance]` (league averages vs. targets, balance tests)
 - Run test, lint, and typecheck before saying a task is done.
 
 ## Architecture
@@ -57,6 +58,7 @@ tests/                Mirrors the src/ folder structure
 Game design decisions live in `docs/design/`. Read the relevant doc before implementing a system, and update it when a decision changes.
 
 - `docs/design/player-attributes.md` — attribute list, scales, Current Ability/Potential, hidden attributes
+- `docs/design/match-engine.md` — match engine flow, log-odds edge model, bias fixes, calibration targets and results
 
 ## Code style (applies to the entire codebase, not just the engine)
 
@@ -73,5 +75,13 @@ Game design decisions live in `docs/design/`. Read the relevant doc before imple
 ## Workflow
 
 - Ask before adding a new dependency.
-- Don't commit unless asked.
-- Record deferred fixes and known follow-ups in `docs/TODO.md`.
+- Every change uses two subagents, run in order:
+  1. **Developer agent**: implements the change, following this file and the relevant design docs.
+  2. **Tester agent**: writes/updates tests, verifies the change independently (incl. batch-sim/balance checks for engine changes), and reports issues. It does not edit `src/`; fixes go back through the developer agent.
+- **Commits:** always ask the user before committing to a branch, every time, regardless of review results.
+- **Pushing:** only when the user says to push to a branch. At that point (and not before), run a **final review agent on the Fable model**. It:
+  1. Looks through all the changed code one last time and reports any issues it finds.
+  2. Cleans up the code (style, dead code, comments, consistency with this file).
+  3. Performs final testing: `npm test`, `npm run typecheck`, `npm run lint`, `npx prettier --check .`, plus `npm run sim:batch` for engine changes.
+- If the Fable review finds issues, report them to the user and don't push until they're resolved and the review is re-run clean.
+- If the Fable review finds no issues, push to the branch (asking before any commit the push needs). Never commit or push to `main` directly.
