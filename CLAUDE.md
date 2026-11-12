@@ -52,6 +52,12 @@ tools/                Dev scripts, e.g. batch-simulating seasons for balance che
 tests/                Mirrors the src/ folder structure
 ```
 
+## Design docs
+
+Game design decisions live in `docs/design/`. Read the relevant doc before implementing a system, and update it when a decision changes.
+
+- `docs/design/player-attributes.md` — attribute list, scales, Current Ability/Potential, hidden attributes
+
 ## Code style (applies to the entire codebase, not just the engine)
 
 - Keep functions simple and small, with one clear purpose each. Split a function when it starts doing several things.
