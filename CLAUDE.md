@@ -83,5 +83,9 @@ Game design decisions live in `docs/design/`. Read the relevant doc before imple
   1. Looks through all the changed code one last time and reports any issues it finds.
   2. Cleans up the code (style, dead code, comments, consistency with this file).
   3. Performs final testing: `npm test`, `npm run typecheck`, `npm run lint`, `npx prettier --check .`, plus `npm run sim:batch` for engine changes.
-- If the Fable review finds issues, report them to the user and don't push until they're resolved and the review is re-run clean.
-- If the Fable review finds no issues, push to the branch (asking before any commit the push needs). Never commit or push to `main` directly.
+- **Triaging Fable findings** (each finding gets a severity: low, medium, high):
+  - **Already in `docs/TODO.md`:** ignore it; it's already tracked.
+  - **Low:** add it to `docs/TODO.md` automatically. It doesn't need fixing now and doesn't block the push.
+  - **Medium or high:** notify the user so they can triage it (fix now, defer to `docs/TODO.md`, or accept). Don't push until every medium/high finding has been triaged and any fixes chosen are made and re-reviewed.
+- If the Fable review finds no medium/high issues, push to the branch (asking before any commit the push needs, including one for new `docs/TODO.md` entries). Never commit or push to `main` directly.
+- Record deferred fixes and known follow-ups in `docs/TODO.md`.
