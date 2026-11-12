@@ -10,11 +10,16 @@ function createMainWindow(): void {
     minHeight: 700,
     title: 'Baseline',
     webPreferences: {
-      preload: join(import.meta.dirname, '../preload/index.mjs'),
-      // Security: the UI gets no direct Node access; it talks to the main process through the preload bridge.
+      // The preload is built as CommonJS (index.cjs, see electron.vite.config.ts) because sandboxed
+      // preloads cannot load ES modules.
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
+      // Security: the UI gets no direct Node access; it talks to the main process only through the
+      // preload bridge. contextIsolation keeps the preload's scope separate from page scripts,
+      // nodeIntegration stays off so page code can't require Node modules, and the sandbox limits the
+      // renderer (and preload) to a small Electron API surface so a compromised page can't reach the OS.
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   })
 

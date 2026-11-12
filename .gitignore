@@ -6,3 +6,4 @@ dist/
 CLAUDE.local.md
 *.tsbuildinfo
 *.swp
+.claude/worktrees/

@@ -68,3 +68,4 @@ tests/                Mirrors the src/ folder structure
 
 - Ask before adding a new dependency.
 - Don't commit unless asked.
+- Record deferred fixes and known follow-ups in `docs/TODO.md`.

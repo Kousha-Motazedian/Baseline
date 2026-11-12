@@ -4,7 +4,9 @@ import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default tseslint.config(
-  { ignores: ['out/', 'node_modules/'] },
+  // .claude/ holds agent worktrees (full repo copies); flat config doesn't skip dot-directories, so
+  // without this every worktree would be linted as if it were part of this checkout.
+  { ignores: ['out/', 'node_modules/', '.claude/'] },
   js.configs.recommended,
   ...tseslint.configs.strict,
   {
