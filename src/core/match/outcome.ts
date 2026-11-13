@@ -9,9 +9,12 @@ import type { Player } from '../players/types.ts'
 export type NextAction =
   /** The offensive rebounder goes straight back up with it. */
   | { kind: 'putback'; rebounder: Player }
-  /** Offensive rebound kicked back out: the offense resets and runs a quick set. */
+  /**
+   * Offensive rebound kicked back out (or a block out of bounds, an offensive team rebound): the
+   * offense resets and runs a quick set.
+   */
   | { kind: 'reset' }
-  /** Inbound after a defensive foul without free throws (or a block out of bounds). */
+  /** Inbound after a defensive foul without free throws. */
   | { kind: 'sideOut' }
 
 /** The kinds of action, each with its own typical length (see ACTION_TIMING in tuning.ts). */

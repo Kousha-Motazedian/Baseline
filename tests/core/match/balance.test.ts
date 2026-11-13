@@ -92,7 +92,7 @@ describe('offense vs. defense balance (300 paired games)', () => {
   const defenseGain = net(defense.tally) - net(base.tally)
 
   it('rewards +3 on offensive attributes and +3 on defensive attributes', () => {
-    // Batch tool (2,000 games × 3 seeds): offense ≈ +16–17, defense ≈ +11–12.6 per 100.
+    // Batch tool (2,000 games × 5 seeds, round 3): offense ≈ +11.9–13.2, defense ≈ +8.0–9.3 per 100.
     expect(offenseGain).toBeGreaterThan(10)
     expect(defenseGain).toBeGreaterThan(6)
   })
@@ -106,7 +106,7 @@ describe('offense vs. defense balance (300 paired games)', () => {
 
 describe('league invariance (300 paired games)', () => {
   it('barely changes league scoring when every rating rises by 3', () => {
-    // Only uncontested free throws should move it (batch tool: +1.0 to +1.3 per 100).
+    // Only uncontested free throws should move it (batch tool: +1.2 to +1.7 per 100).
     const shift = leagueRating(league.tally) - leagueRating(base.tally)
     expect(Math.abs(shift)).toBeLessThan(3)
   })

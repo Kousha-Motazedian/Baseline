@@ -2,7 +2,8 @@ import type { ActionKind } from './outcome.ts'
 import type { PlayType } from './types.ts'
 
 /**
- * Calibration knobs for the match engine, all in one place.
+ * Calibration knobs for the match engine, all in one place (the attribute blends behind each
+ * composite skill are the one exception: they live in ratings.ts).
  *
  * Base rates are what a league-average player (rating 10.5) produces against league-average
  * defense. Because players pick the plays they're good at, the *realized* league rates come out
@@ -122,6 +123,21 @@ export const BASE_BLOCK_SHARE_OF_MISSES: Record<PlayType, number> = {
   midRange: 0.064,
   three: 0.024,
   putback: 0.105,
+}
+
+/**
+ * Share of the contest that comes from the help defender (the rim protector) rather than the
+ * man guarding the ball. Drives and cuts end at the rim, where help arrives; post-ups are mostly
+ * one-on-one; jump shots are contested only by the on-ball defender.
+ */
+export const HELP_SHARE: Record<PlayType, number> = {
+  drive: 0.5,
+  cut: 0.5,
+  postUp: 0.3,
+  midRange: 0,
+  three: 0,
+  // A putback goes up right at the rim, where the rim protector is usually already standing.
+  putback: 0.5,
 }
 
 /** Shots taken while being fouled go in far less often (an "and-one"). */
@@ -246,6 +262,8 @@ export const NUMBERS_REBOUND_EDGE = 0.3
  * weight). 0.3 gives a starting big ~15 boards in 48 minutes and guards ~6–7.
  */
 export const REBOUND_HEIGHT_FACTOR = 0.3
+/** Floor on that height multiplier, so even a very short player still gets some rebounds. */
+export const REBOUND_MIN_SIZE_FACTOR = 0.3
 /**
  * Chance the offensive rebounder goes straight back up instead of kicking it out. Real
  * second-chance shots are mostly immediate putbacks.
@@ -297,6 +315,9 @@ export const FREE_THROW_PER_RATING_POINT = 0.018
  * (Composure 20 = +5 points, Composure 1 = −5). Symmetric, so league FT% doesn't move.
  */
 export const CLUTCH_FREE_THROW_SWING = 0.05
+/** Hard floor and ceiling on any free-throw chance (ratings outside 1–20, clutch swings). */
+export const FREE_THROW_MIN_CHANCE = 0.3
+export const FREE_THROW_MAX_CHANCE = 0.97
 
 // ---------------------------------------------------------------------------------------------
 // Edge weights and situational effects
@@ -454,7 +475,7 @@ export const THREE_HUNT_BOOST = 3
 export const CHASE_FOUL_MAX_DEFICIT = 3
 /** A team down exactly 3 in the final this-many seconds goes for the tying three... */
 export const TYING_THREE_SECONDS = 30
-/** ...multiplying the weight of threes by at least this (≈ 85% of its shots become threes). */
+/** ...multiplying the weight of threes by this (≈ 85–90% of its shots become threes). */
 export const TYING_THREE_FACTOR = 10
 /**
  * A team down exactly 2 in the same window multiplies its three weight by this: it mostly plays

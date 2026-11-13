@@ -7,6 +7,7 @@ import type { PlayType } from './types.ts'
  * (still on the 1–20 scale) for a specific situation.
  */
 
+/** Relative weight of each attribute in a composite skill (they needn't sum to 1). */
 type AttributeWeights = Partial<Record<VisibleAttributeKey, number>>
 
 /** Weighted average of several of a player's attributes, on the 1–20 scale. */
@@ -23,6 +24,11 @@ export function blend(player: Player, weights: AttributeWeights): number {
 /** Height relative to a 200 cm reference, in units of 15 cm (so a 215 cm center is +1). */
 export function heightEdge(player: Player): number {
   return (player.measurables.heightCm - 200) / 15
+}
+
+/** Average of a value across a lineup. */
+export function lineupAverage(lineup: readonly Player[], valueOf: (p: Player) => number): number {
+  return lineup.reduce((sum, p) => sum + valueOf(p), 0) / lineup.length
 }
 
 /** Which attributes make a player good at running each play type. */

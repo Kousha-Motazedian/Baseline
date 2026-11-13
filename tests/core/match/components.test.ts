@@ -61,6 +61,7 @@ function shotContext(
 
 describe('freeThrowChance', () => {
   it('is linear in Free Throw: ≈61% at 1, 78% at average, ≈95% at 20', () => {
+    /** Free-throw chance at a given Free Throw rating. */
     const at = (r: number): number =>
       freeThrowChance(makePlayer({ id: 'a', attributes: { freeThrow: r } }))
     expect(at(10.5)).toBeCloseTo(BASE_FREE_THROW, 10)
@@ -70,6 +71,7 @@ describe('freeThrowChance', () => {
   })
 
   it('is clamped for out-of-scale ratings', () => {
+    /** Free-throw chance at a given Free Throw rating. */
     const at = (r: number): number =>
       freeThrowChance(makePlayer({ id: 'a', attributes: { freeThrow: r } }))
     expect(at(40)).toBe(0.97)
@@ -96,6 +98,7 @@ describe('turnoverChance / stealChance', () => {
   })
 
   it('makes better stealers turn more turnovers into steals', () => {
+    /** Steal chance at a given Stealing rating. */
     const at = (r: number): number =>
       stealChance(makePlayer({ id: 'a', attributes: { stealing: r } }))
     expect(at(18)).toBeGreaterThan(at(10.5))
@@ -104,6 +107,7 @@ describe('turnoverChance / stealChance', () => {
 })
 
 describe('makeChance', () => {
+  /** Log-odds of a probability. */
   const logit = (p: number): number => Math.log(p / (1 - p))
 
   it('is the base rate minus only the road-crowd penalty for an even matchup on the road', () => {
@@ -300,6 +304,7 @@ describe('periodStarter / periodName', () => {
 describe('clutch time', () => {
   it('only applies late in the last regulation period or overtime, in a close game', () => {
     const game = makeGameState({ home: makeFlatTeam('A', 10), away: makeFlatTeam('B', 10) })
+    /** Sets the game situation and reports whether it counts as clutch time. */
     const check = (period: number, clock: number, margin: number): boolean => {
       game.period = period
       game.clock = clock
@@ -518,6 +523,7 @@ describe('independent offensive and defensive form (tester round 3)', () => {
     })
     const defender = slot(base.home.onCourt, 0)
     const shooter = slot(base.away.onCourt, 0)
+    /** A fresh shot context for the same shooter and defender. */
     const ctx = (): ShotContext => ({
       game: base,
       offense: base.away,

@@ -64,6 +64,7 @@ function series(team: MatchTeam = TEAM, opponent: MatchTeam = OPPONENT): MatchRe
 describe('shooting attributes', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
   it('raising Three-Point raises a player’s 3PA share and 3P%', () => {
     const id = TEAM.roster[2]?.id ?? ''
+    /** The player's share of team 3PA and his 3P% at a given Three-Point rating. */
     const at = (rating: number): { share: number; pct: number } => {
       const rs = series(updatePlayer(TEAM, 2, (p) => withAttributes(p, { threePoint: rating })))
       const tpa = playerTotal(rs, 'home', id, 'threesAttempted')
@@ -134,6 +135,7 @@ describe('defensive attributes', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
   })
 
   it('a strong rim protector cuts the opponent’s share of drives and cuts', () => {
+    /** The opponent with its big's rim-protection attributes set to `rating`. */
     const rim = (rating: number): MatchTeam =>
       updatePlayer(OPPONENT, 4, (p) =>
         withAttributes(p, { interiorDefense: rating, vertical: rating, shotBlocking: rating }),
@@ -185,6 +187,7 @@ describe('playmaking and rebounding attributes', { timeout: SLOW_TEST_TIMEOUT_MS
   })
 
   it('raising Offensive Rebounding raises ORB%', () => {
+    /** The 'home'-id team's offensive-rebound percentage over a series. */
     const orbPct = (rs: MatchResult[]): number => {
       const orb = seriesTotal(rs, 'home', 'offensiveRebounds')
       return orb / (orb + seriesTotal(rs, 'away', 'defensiveRebounds'))
@@ -242,6 +245,7 @@ describe('shot distribution', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
   })
 
   it('spreads rebounds: the starting big gets the most, but well under half', () => {
+    /** A player's total rebounds over the series. */
     const reb = (id: string): number =>
       playerTotal(results, 'home', id, 'offensiveRebounds') +
       playerTotal(results, 'home', id, 'defensiveRebounds')

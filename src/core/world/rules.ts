@@ -124,7 +124,8 @@ export const FIBA_RULES: LeagueRules = {
   overtimeTeamFoulsBeforePenalty: 4,
   overtimeTeamFoulsCarryOver: true,
   lateFoulWindowSeconds: null,
-  // FIBA has no away-from-the-play rule (its unsportsmanlike foul isn't modelled).
+  // FIBA has no free-throw-plus-possession window like the NBA's. Its own late-game variant
+  // (defensive contact during a last-2:00 throw-in is an unsportsmanlike foul) isn't modelled.
   awayFromPlayFoulWindowSeconds: null,
   lateFoulsBeforePenalty: 0,
   penaltyFreeThrows: 2,

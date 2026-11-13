@@ -48,8 +48,10 @@ describe('game length rules', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
     const [home, away] = generatedPair(21)
     const pro = playSeries(home, away, 40, { rules: PRO_RULES })
     const fiba = playSeries(home, away, 40, { rules: FIBA_RULES })
+    /** Mean combined possessions per game. */
     const poss = (rs: MatchResult[]): number =>
       mean(rs.map((r) => r.home.possessions + r.away.possessions))
+    /** Mean combined points per game. */
     const pts = (rs: MatchResult[]): number => mean(rs.map((r) => r.home.points + r.away.points))
     // Expected ratio ≈ 40/48 ≈ 0.83 for both; ±0.05 covers noise over 40 games.
     expect(poss(fiba) / poss(pro)).toBeGreaterThan(0.78)

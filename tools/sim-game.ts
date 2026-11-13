@@ -57,6 +57,7 @@ function total(team: TeamResult, field: keyof PlayerLine): number {
 
 /** Builds a pseudo player line holding the team totals, so it prints with the same layout. */
 function totalsLine(team: TeamResult): PlayerLine {
+  /** Team total of one box score field. */
   const sum = (field: keyof PlayerLine): number => total(team, field)
   return {
     playerId: 'total',
@@ -100,6 +101,7 @@ function printLineScore(result: MatchResult): void {
   const periods = result.home.periodPoints.map((_, i) =>
     i < PRO_RULES.periods ? `Q${i + 1}` : `OT${i - PRO_RULES.periods + 1}`,
   )
+  /** One team's line: name, points by period, final score. */
   const row = (team: TeamResult): string =>
     team.name.padEnd(24) +
     team.periodPoints.map((p) => String(p).padStart(5)).join('') +

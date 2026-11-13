@@ -88,6 +88,7 @@ describe('assists', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
   it('never credits the shooter, and never assists putbacks', () => {
     // Generated rosters can repeat a last name, which would make "Vance (assist Vance)" ambiguous.
     const names = [...HOME.roster, ...AWAY.roster].map((p) => p.lastName)
+    /** True if exactly one player in the game has this last name. */
     const unique = (name: string): boolean => names.filter((n) => n === name).length === 1
     for (const line of LINES) {
       const match = /^(\S+) makes .*\(assist (\S+)\)$/.exec(line.text)
@@ -98,6 +99,7 @@ describe('assists', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
 
   it('come mostly from the good passers who handle the ball', () => {
     const guards = [0, 1].map((i) => slot(HOME.roster, i).id)
+    /** A player's assists over the whole series. */
     const assists = (id: string): number =>
       GAMES.reduce(
         (s, r) => s + (sides(r, 'home')[0].players.find((l) => l.playerId === id)?.assists ?? 0),
@@ -160,6 +162,7 @@ describe('fast breaks', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
   it('a much faster team scores more fast-break points', () => {
     const fast = patchTeam(HOME, { speed: 18 })
     const slow = patchTeam(HOME, { speed: 4 })
+    /** The 'home'-id team's fast-break points over a series. */
     const fb = (rs: MatchResult[]): number =>
       rs.reduce((s, r) => s + (r.home.teamId === 'home' ? r.home : r.away).fastBreakPoints, 0)
     expect(fb(playSeries(fast, AWAY, 40))).toBeGreaterThan(1.3 * fb(playSeries(slow, AWAY, 40)))

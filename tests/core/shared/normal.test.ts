@@ -19,6 +19,7 @@ describe('randomNormal', () => {
 
   it('puts about 68% of draws within one SD and about 95% within two', () => {
     const values = samples(50_000, 0, 1)
+    /** Share of the draws within `k` standard deviations of the mean. */
     const within = (k: number): number =>
       values.filter((v) => Math.abs(v) < k).length / values.length
     expect(Math.abs(within(1) - 0.6827)).toBeLessThan(0.01)

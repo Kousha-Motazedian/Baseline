@@ -8,6 +8,7 @@ import { continueWith } from './outcome.ts'
 import {
   defensiveReboundSkill,
   heightEdge,
+  lineupAverage,
   offensiveReboundSkill,
   offensiveSkill,
 } from './ratings.ts'
@@ -26,6 +27,7 @@ import {
   PUTBACK_HEIGHT_WEIGHT,
   PUTBACK_SKILL_WEIGHT,
   REBOUND_HEIGHT_FACTOR,
+  REBOUND_MIN_SIZE_FACTOR,
 } from './tuning.ts'
 
 /** What the rebound came off: a missed field goal, a blocked shot, or a missed free throw. */
@@ -44,11 +46,6 @@ const FAST_BREAK_BY_SOURCE: Record<ReboundSource, number> = {
   block: BLOCK_FAST_BREAK,
   // After a missed free throw every player is lined up on the lane: no running start.
   freeThrow: 0,
-}
-
-/** Average of a value across a lineup. */
-function lineupAverage(lineup: readonly Player[], valueOf: (p: Player) => number): number {
-  return lineup.reduce((sum, p) => sum + valueOf(p), 0) / lineup.length
 }
 
 /** Chance the offense gets the rebound, comparing both lineups' rebounding, size and numbers. */
@@ -81,7 +78,9 @@ function pickRebounder(
   // Linear in skill, plus a height factor so a 7-footer out-rebounds a guard with equal skill.
   // (Squared skill with a stronger height factor gave starting bigs ~45% of their team's boards,
   // about 20 a game; linear lands them near the real ~30%.)
-  const sizeFactor = (p: Player): number => Math.max(0.3, 1 + heightEdge(p) * REBOUND_HEIGHT_FACTOR)
+  /** Height multiplier on a player's rebounding weight, floored so nobody drops to zero. */
+  const sizeFactor = (p: Player): number =>
+    Math.max(REBOUND_MIN_SIZE_FACTOR, 1 + heightEdge(p) * REBOUND_HEIGHT_FACTOR)
   return pickWeighted(game.rng, lineup, (p) => skillOf(p) * sizeFactor(p))
 }
 

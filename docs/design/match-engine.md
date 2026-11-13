@@ -432,8 +432,8 @@ Latest results (round 3 after the fix pass, 2,000 games per seed):
 | Technicals / team-game      | 0.57   | 0.58   | 0.55   | 0.57   | 0.55    | 0.4–0.8  | PASS   |
 | Foul-outs / game            | 0.23   | 0.22   | 0.22   | 0.21   | 0.23    | 0.1–0.3  | PASS   |
 | Team-games under 70 pts     | .000   | .000   | .000   | .000   | .000    | ≤ .01    | PASS   |
-| Fast-break points / game    | 13.5   | 13.5   | 13.6   | 13.7   | 13.5    | 12–16    | PASS   |
-| Points off turnovers / game | 15.3   | 15.1   | 15.1   | 15.4   | 15.2    | (report) | —      |
+| Fast-break pts / team-game  | 13.5   | 13.5   | 13.6   | 13.7   | 13.5    | 12–16    | PASS   |
+| Points off TO / team-game   | 15.3   | 15.1   | 15.1   | 15.4   | 15.2    | (report) | —      |
 | Overtime rate (league)      | .034   | .033   | .040   | .043   | .038    | .05–.07  | OFF    |
 
 Round 2 for comparison: foul-outs 2.48–2.53 per game, overtime .023–.025, FTA/FGA .246 (now
@@ -447,7 +447,7 @@ teams, tanking), never from inflating bad teams' scoring to hit a target. The �
 applies only to typical games between similar league-average teams; a real mismatch may
 legitimately go lower.
 
-FGA mix: drive 22.6%, cut 7.5%, post-up 5.5%, mid-range 18.1%, three 39.4%, putback 6.9%. Foul
+FGA mix (seed 1): drive 22.6%, cut 7.5%, post-up 5.4%, mid-range 18.2%, three 39.3%, putback 7.0%. Foul
 mix per team-game (round 2, seed 1, 300 games): shooting ≈ 9, non-shooting ≈ 8.5, offensive ≈ 2,
 intentional ≈ 0.5.
 

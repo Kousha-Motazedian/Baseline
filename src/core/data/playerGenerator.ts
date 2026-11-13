@@ -27,6 +27,7 @@ export interface PlayerGenerationOptions {
   quality: number
 }
 
+/** Rating-point offsets for some attributes (unlisted attributes are 0). */
 type AttributeBias = Partial<Record<VisibleAttributeKey, number>>
 
 /**

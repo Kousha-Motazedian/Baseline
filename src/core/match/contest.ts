@@ -4,7 +4,7 @@ import type { Rng } from '../shared/rng.ts'
 import { bestRimProtector, defensiveSkill, heightEdge, rimProtectionSkill } from './ratings.ts'
 import type { TeamState } from './state.ts'
 import { matchupDefender } from './state.ts'
-import { DEFENSE_EDGE_WEIGHT, OFFENSE_EDGE_WEIGHT } from './tuning.ts'
+import { DEFENSE_EDGE_WEIGHT, HELP_SHARE, OFFENSE_EDGE_WEIGHT } from './tuning.ts'
 import type { PlayType } from './types.ts'
 
 /**
@@ -12,21 +12,6 @@ import type { PlayType } from './types.ts'
  * (shot.ts) and when the offense decides which play to run (playSelection.ts), so the two can
  * never disagree about who is a good defender.
  */
-
-/**
- * Share of the contest that comes from the help defender (the rim protector) rather than the
- * man guarding the ball. Drives and cuts end at the rim, where help arrives; post-ups are mostly
- * one-on-one; jump shots are contested only by the on-ball defender.
- */
-const HELP_SHARE: Record<PlayType, number> = {
-  drive: 0.5,
-  cut: 0.5,
-  postUp: 0.3,
-  midRange: 0,
-  three: 0,
-  // A putback goes up right at the rim, where the rim protector is usually already standing.
-  putback: 0.5,
-}
 
 /** True for plays that finish near the basket, where the rim protector and size matter. */
 export function isInsideShot(playType: PlayType): boolean {

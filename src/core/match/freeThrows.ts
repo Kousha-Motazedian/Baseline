@@ -10,6 +10,8 @@ import {
   CLUTCH_FREE_THROW_SWING,
   CLUTCH_MARGIN,
   CLUTCH_SECONDS,
+  FREE_THROW_MAX_CHANCE,
+  FREE_THROW_MIN_CHANCE,
   FREE_THROW_PER_RATING_POINT,
 } from './tuning.ts'
 
@@ -23,7 +25,7 @@ export function freeThrowChance(shooter: Player, clutch = false): number {
   const pressure = clutch
     ? CLUTCH_FREE_THROW_SWING * normalizeRating(shooter.attributes.composure)
     : 0
-  return clamp(skill + pressure, 0.3, 0.97)
+  return clamp(skill + pressure, FREE_THROW_MIN_CHANCE, FREE_THROW_MAX_CHANCE)
 }
 
 /** Shoots `count` free throws and records them; returns whether the last one went in. */

@@ -64,11 +64,12 @@ export function assessTechnical(game: GameState, team: TeamState, player: Player
   technicalFreeThrow(game, team)
   // Some leagues (FIBA) count technicals toward the personal-foul limit as well.
   if (game.rules.technicalsCountTowardFoulLimit) line.personalFouls += 1
-  const inFoulTrouble = (p: Player): boolean => sitsForFouls(game, team, p)
+  /** True if a possible replacement is himself sitting with fouls (steers the pick away from him). */
+  const sitting = (p: Player): boolean => sitsForFouls(game, team, p)
   if (line.technicalFouls >= game.rules.technicalFoulsToEject) {
-    disqualify(game, team, player, 'ejected', inFoulTrouble)
+    disqualify(game, team, player, 'ejected', sitting)
   } else if (line.personalFouls >= game.rules.personalFoulLimit) {
-    disqualify(game, team, player, 'fouledOut', inFoulTrouble)
+    disqualify(game, team, player, 'fouledOut', sitting)
   }
   // STOPGAP: where a technical is also a personal foul (FIBA) it can put him in foul trouble;
   // the technical is a dead ball, so the bench check runs right away.

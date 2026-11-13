@@ -56,6 +56,7 @@ interface Totals {
 
 /** Creates an all-zero totals object. */
 function emptyTotals(): Totals {
+  /** A zero for every play type. */
   const zeroByPlay = (): Record<PlayType, number> =>
     Object.fromEntries(PLAY_TYPES.map((t) => [t, 0])) as Record<PlayType, number>
   return {
@@ -156,6 +157,7 @@ interface Metric {
 
 /** Computes every calibration metric from the totals, with the real modern pro-league targets. */
 function metrics(t: Totals): Metric[] {
+  /** Scales a league total to a rate per 100 possessions. */
   const per100 = (n: number): number => (n / t.possessions) * 100
   return [
     {
@@ -430,7 +432,7 @@ function printBalance(
   const offenseGain = netRating(offense) - netRating(base)
   const defenseGain = netRating(defense) - netRating(base)
   const ratio = offenseGain / defenseGain
-  // League scoring compares both teams' points (A's offensive rating plus B's, averaged).
+  /** League scoring: both teams' points per 100 possessions (A's offensive rating and B's, averaged). */
   const leagueRating = (t: NetTally): number =>
     ((t.pointsFor + t.pointsAgainst) / 2 / t.possessions) * 100
   const leagueShift = leagueRating(leagueBoosted) - leagueRating(leagueBase)

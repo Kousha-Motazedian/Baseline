@@ -37,6 +37,7 @@ export function bestCandidate(
   player: Player,
   tierOf: (p: Player) => number | undefined,
 ): Player | undefined {
+  /** Height difference between a candidate and the player being replaced. */
   const gap = (p: Player): number => Math.abs(p.measurables.heightCm - player.measurables.heightCm)
   let best: Player | undefined
   let bestTier = Infinity

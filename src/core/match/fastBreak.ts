@@ -1,6 +1,6 @@
 import type { Player } from '../players/types.ts'
 import { adjustProbability, normalizeRating } from '../shared/probability.ts'
-import { retreatSkill } from './ratings.ts'
+import { lineupAverage, retreatSkill } from './ratings.ts'
 import { wantsToMilkClock } from './scoreEffects.ts'
 import type { GameState, TeamState } from './state.ts'
 import {
@@ -23,11 +23,6 @@ import {
 export interface FastBreak {
   /** True if the offense has a numbers advantage (2-on-1, 3-on-2): no help defense at all. */
   outnumbered: boolean
-}
-
-/** Average of a value across a lineup. */
-function lineupAverage(lineup: readonly Player[], valueOf: (p: Player) => number): number {
-  return lineup.reduce((sum, p) => sum + valueOf(p), 0) / lineup.length
 }
 
 /** Log-odds edge of the running team's Speed over the retreating team's Speed and Hustle. */

@@ -144,6 +144,7 @@ export function intentionalFouler(
   target: Player,
 ): Player {
   const matchup = matchupDefender(offense, defense, target)
+  /** Personal fouls a defender already has. */
   const fouls = (p: Player): number => lineOf(defense, p).personalFouls
   // A disqualified player who had to stay on would turn the foul into a technical: skip him.
   const eligible = defense.onCourt.filter((p) => !isDisqualified(defense, p))
