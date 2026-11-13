@@ -178,9 +178,10 @@ export const FOUL_EDGE_WEIGHT = 0.6
 export const NON_SHOOTING_FOUL_TEMPER_WEIGHT = 0.3
 /**
  * Chance of a defensive non-shooting foul (reach-in, holding, blocking) per set. Tuned with the
- * shooting-foul rates to ~20 personal fouls per team-game.
+ * shooting-foul rates to ~20 personal fouls per team-game (raised from 0.086 when late intentional
+ * fouling was narrowed to the last 30 s, which removed ~0.7 fouls per team-game).
  */
-export const BASE_NON_SHOOTING_FOUL = 0.086
+export const BASE_NON_SHOOTING_FOUL = 0.091
 /**
  * How much a handler who can beat his man (Driving/Quickness vs. Perimeter Defense/Quickness)
  * forces extra non-shooting fouls. Smaller than the temperament weight: fouling is mostly about
@@ -394,24 +395,45 @@ export const MILK_WINDOW_SECONDS = 150
 export const MILK_FULL_LEAD = 6
 /** ...using up to this share of the gap between a normal action and a near-violation one. */
 export const MILK_MAX_SHARE = 0.8
+/** Log-odds penalty on a fully milked possession's shot (scaled by the milk share). */
+export const MILK_SHOT_PENALTY = 0.5
 /** Seconds left on the shot clock when a team milking the clock finally shoots. */
 export const MILK_BUFFER_SECONDS = 3
 /** A tied team holding for the last shot shoots with this many seconds left on the game clock. */
 export const LAST_SHOT_BUFFER_SECONDS = 2
+/**
+ * A team down 1–3 in the final period or overtime, with no more game clock than shot clock,
+ * shoots with this many seconds left: a tying basket leaves the opponent too little time for a
+ * set play, but there's still time for an offensive rebound or a foul.
+ */
+export const TRAILING_SHOT_BUFFER_SECONDS = 5
 /** A team trailing by at least this many... */
 export const HURRY_MIN_DEFICIT = 3
 /** ...in the final this-many seconds plays faster... */
 export const HURRY_WINDOW_SECONDS = 90
 /** ...taking this fraction of a normal action's time. */
 export const HURRY_FACTOR = 0.55
-/** The trailing team fouls on purpose in the final this-many seconds... */
-export const INTENTIONAL_FOUL_SECONDS = 60
-/** ...when down by at least this many (down 1–3 it can still get a stop and score normally)... */
+/** A team down 4+ fouls on purpose (for extra possessions) only in the final this-many s... */
+export const INTENTIONAL_FOUL_SECONDS = 30
+/** ...when down by at least this many (down 1–3 it chase-fouls: CHASE_FOUL_MAX_DEFICIT)... */
 export const INTENTIONAL_FOUL_MIN_DEFICIT = 4
-/** ...and at most this many (beyond that the game is effectively over). */
-export const INTENTIONAL_FOUL_MAX_DEFICIT = 10
-/** An intentional foul comes quickly: a minimum plus a random spread, in seconds. */
-export const INTENTIONAL_FOUL_MIN_SECONDS = 1
+/**
+ * ...and at most BASE + clock / SECONDS_PER_POINT: the deficit still worth fouling shrinks as
+ * time runs out (30 s left → 8, 12 s → 5). Each foul-and-answer exchange takes ~6 s and gains
+ * the trailing team ~1 point at best, so a bigger deficit is simply over. A fixed cap (it was
+ * 10 in the last minute) piled final margins up just past the cap: the leader's free throws
+ * pushed the gap out of range and then the fouling stopped.
+ */
+export const INTENTIONAL_FOUL_BASE_DEFICIT = 3
+export const INTENTIONAL_FOUL_SECONDS_PER_POINT = 6
+/**
+ * No intentional foul with this many seconds or less left: no time to foul before the buzzer.
+ * Must be ≥ INTENTIONAL_FOUL_MIN_DURATION so every foul fits in the clock left.
+ */
+export const INTENTIONAL_FOUL_CUTOFF_SECONDS = 1
+/** An intentional foul takes at least this long (so the clock always moves toward the end)... */
+export const INTENTIONAL_FOUL_MIN_DURATION = 1
+/** ...plus up to this much more, in seconds. */
 export const INTENTIONAL_FOUL_SPREAD_SECONDS = 3
 /** A team down by at least this many... */
 export const THREE_HUNT_MIN_DEFICIT = 3
@@ -419,3 +441,82 @@ export const THREE_HUNT_MIN_DEFICIT = 3
 export const THREE_HUNT_WINDOW_SECONDS = 120
 /** ...up to (1 + BOOST)× its normal three-point weight as the clock runs out. */
 export const THREE_HUNT_BOOST = 3
+
+// ---------------------------------------------------------------------------------------------
+// Tie-seeking end-game play (last regulation period and overtime)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Once the leading team could run out the clock (game clock ≤ its shot clock), a team trailing
+ * by 1 to this many fouls on purpose: without a foul the game just ends. 3 because down 3 the
+ * trailing team also needs the ball back (our judgment call; see the design doc).
+ */
+export const CHASE_FOUL_MAX_DEFICIT = 3
+/** A team down exactly 3 in the final this-many seconds goes for the tying three... */
+export const TYING_THREE_SECONDS = 30
+/** ...multiplying the weight of threes by at least this (≈ 85% of its shots become threes). */
+export const TYING_THREE_FACTOR = 10
+/**
+ * A team down exactly 2 in the same window multiplies its three weight by this: it mostly plays
+ * for the tying two (most real coaches do) rather than the winning three.
+ */
+export const TYING_TWO_THREE_FACTOR = 0.5
+/**
+ * A team up exactly 3 in the final this-many seconds fouls the ball handler before he can shoot
+ * the tying three (0 turns it off). A coaching choice: it should become a tactics setting.
+ */
+export const FOUL_UP_THREE_SECONDS = 6
+
+/**
+ * Log-odds penalty on every shot in the final this-many seconds of a close game (final period or
+ * overtime, within KEYED_DEFENSE_MARGIN): the defense knows exactly what's coming and sells out
+ * to stop it (real last-possession shots go in only ~30–35% of the time). Kept small: it also
+ * makes the trailing team's tying shots harder, so a bigger value doesn't add overtimes.
+ */
+export const KEYED_DEFENSE_EDGE = 0.3
+/** The keyed-defense window: the final this-many seconds (the last few possessions)... */
+export const KEYED_DEFENSE_SECONDS = 60
+/** ...with the score within this many points either way. */
+export const KEYED_DEFENSE_MARGIN = 5
+
+// ---------------------------------------------------------------------------------------------
+// STOPGAP: foul-trouble benching (until rotations exist; see foulTrouble.ts)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A player sits once his fouls reach (foul limit − margin) in each regulation period: with a
+ * 6-foul limit that's 2 in Q1, 3 in Q2, 4 in Q3 and 5 in Q4. Later periods of a longer game use
+ * the last margin.
+ */
+export const FOUL_TROUBLE_MARGINS: readonly number[] = [4, 3, 2, 1]
+/** Never sit a player for fewer fouls than this (a 5-foul league would otherwise sit him at 1). */
+export const FOUL_TROUBLE_MIN_FOULS = 2
+/** In the final this-many seconds of regulation, and in overtime, nobody sits for fouls. */
+export const FOUL_TROUBLE_RELEASE_SECONDS = 300
+/**
+ * How much less likely (log-odds) a player one foul from disqualification is to commit a foul
+ * (defensive or offensive): he plays it safe for the minutes he can't be benched.
+ */
+export const FOUL_TROUBLE_CAUTION = 2
+
+// ---------------------------------------------------------------------------------------------
+// STOPGAP: blowout easing (until garbage-time rotations exist; see blowout.ts)
+// ---------------------------------------------------------------------------------------------
+
+/** Most log-odds a leading team gives up per player, at both ends, when the game is decided. */
+export const BLOWOUT_MAX_EASE = 0.17
+/** Easing starts at this second-half lead... */
+export const BLOWOUT_START_LEAD = 4
+/** ...and is fully on (size-wise) at this lead. */
+export const BLOWOUT_FULL_LEAD = 15
+/**
+ * Spread of the margin per √minute still to play, used to judge how safe a lead is. ≈ 2 is the
+ * real ~13.5-point full-game spread over 48 minutes.
+ */
+export const BLOWOUT_MARGIN_SD_PER_SQRT_MINUTE = 2
+/** Time left is floored at this many minutes when judging safety (avoids dividing by zero). */
+export const BLOWOUT_MIN_MINUTES = 1
+/** Easing starts once the lead is this many spreads of the remaining swing... */
+export const BLOWOUT_START_SAFETY = 0.5
+/** ...and is fully on (safety-wise) at this many. */
+export const BLOWOUT_FULL_SAFETY = 2.5

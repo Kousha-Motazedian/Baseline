@@ -70,16 +70,22 @@ function enterPeriod(counts: FoulCounts, period: number, rules: LeagueRules): vo
   counts.period = period
 }
 
+/** True if a personal-foul line counts as a team foul under `rules` (offensive fouls may not). */
+function isTeamFoul(kind: string, rules: LeagueRules): boolean {
+  return rules.offensiveFoulsCountAsTeamFouls || !kind.startsWith('Offensive foul')
+}
+
 /**
- * Replays one game's fouls and checks every bonus decision. Every personal foul (shooting,
- * non-shooting, offensive, intentional) is a team foul; technicals never are.
+ * Replays one game's fouls and checks every bonus decision. Every defensive personal foul
+ * (shooting, non-shooting, intentional) is a team foul; offensive fouls only where the rules say
+ * so; technicals never are.
  */
 function checkBonusDecisions(result: MatchResult, rules: LeagueRules, cov: BonusCoverage): void {
   const counts: FoulCounts = { period: 0, inPeriod: new Map(), inWindow: new Map() }
   result.playByPlay.forEach((entry, i) => {
     if (entry.period !== counts.period) enterPeriod(counts, entry.period, rules)
     const match = PERSONAL_FOUL_LINE.exec(entry.text)
-    if (!match?.[1]) return
+    if (!match?.[1] || !isTeamFoul(match[1], rules)) return
     const team = entry.teamId
     const before = counts.inPeriod.get(team) ?? 0
     const lateBefore = counts.inWindow.get(team) ?? 0
@@ -258,3 +264,22 @@ describe('bonus thresholds at exact counts', () => {
 function foulsWithoutLog(game: GameState, count: number): void {
   for (let i = 0; i < count; i++) addTeamFoul(game, game.home)
 }
+
+describe('offensive fouls and the team-foul count', () => {
+  it('pro: an offensive foul is a personal foul but not a team foul; FIBA: both', () => {
+    for (const rules of [PRO_RULES, FIBA_RULES]) {
+      const game = makeGameState({
+        home: makeFlatTeam('A', 10),
+        away: makeFlatTeam('B', 10),
+        rules,
+      })
+      const player = game.home.onCourt[0]
+      if (!player) throw new Error('missing player')
+      commitFoul(game, game.home, player, 'Offensive foul', 'offensive')
+      expect(game.home.lines.get(player.id)?.personalFouls).toBe(1)
+      expect(game.home.teamFouls).toBe(rules.offensiveFoulsCountAsTeamFouls ? 1 : 0)
+    }
+    expect(PRO_RULES.offensiveFoulsCountAsTeamFouls).toBe(false)
+    expect(FIBA_RULES.offensiveFoulsCountAsTeamFouls).toBe(true)
+  })
+})

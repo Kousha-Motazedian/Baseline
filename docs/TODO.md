@@ -40,3 +40,13 @@ Deferred fixes from code reviews. Tick an item off (or delete it) when it lands;
 - [ ] `dist/` is git-ignored but not ESLint-ignored (Prettier is fine, it honours `.gitignore`); add it before a packaging step starts writing there. (`eslint.config.js`)
 - [ ] Consider `noUncheckedIndexedAccess` before the array-heavy sim code grows; `pick()` already casts as if it were on. (`tsconfig.base.json`, `src/core/shared/rng.ts`)
 - [ ] Folder map doesn't list `docs/` (now home of `TODO.md`). (`CLAUDE.md`)
+
+## Match engine
+
+- [ ] Overtime rate ≈ 4–5% vs. a 5–7% target after the round-3 fix pass; revisit late-game conversion once rotations/tactics exist rather than adding more end-game rules. (`docs/design/match-engine.md`, "Known off-target")
+- [ ] FTA/FGA drifted to .226–.229, near the .22 floor and below the real NBA's ~.24–.25. Recover free throws through the shooting-foul rates (`BASE_SHOOTING_FOUL`) rather than `BASE_NON_SHOOTING_FOUL` (`src/core/match/tuning.ts:184`), then re-check that personal fouls per team-game stay in range. (`src/core/match/tuning.ts`, `tools/batch-sim.ts`)
+- [ ] The FIBA comment on `awayFromPlayFoulWindowSeconds` overstates: FIBA does have a throw-in variant (defensive contact during a last-2:00 throw-in is an unsportsmanlike foul); it isn't modelled. Reword the comment. (`src/core/world/rules.ts:127`)
+- [ ] Under FIBA, a technical reached through `commitFoul` runs `updateFoulTroubleBench` twice (once in `assessTechnical`, once in `commitFoul`). Harmless (idempotent); dedupe sometime. (`src/core/match/technicals.ts:73`, `src/core/match/fouls.ts`)
+- [ ] League overtime (.033–.043) is below the identical-teams rate: the generator's spread in team quality may be wider than a real league's, which pushes league overtime down. Check the generator's quality spread against a real league; realistic levers beyond that need timeouts, last-shot plays, 2-for-1s and rotations. (`src/core/data/teamGenerator.ts`, `tools/batch-sim.ts`)
+- [ ] Run long test and batch jobs under `caffeinate -i` (e.g. `caffeinate -i npm run sim:batch -- --balance`): the earlier "hangs" were macOS sleeping mid-run. Consider documenting it in `tools/README.md`.
+- [ ] Remove the two stopgaps once rotations exist: foul-trouble benching and caution (`src/core/match/foulTrouble.ts`, `regulars` in `state.ts`/`lineup.ts`) and blowout easing (`src/core/match/blowout.ts`).

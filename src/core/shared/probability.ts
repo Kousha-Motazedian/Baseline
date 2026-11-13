@@ -18,3 +18,12 @@ export function adjustProbability(base: number, edge: number): number {
   const logOdds = Math.log(base / (1 - base)) + edge
   return 1 / (1 + Math.exp(-logOdds))
 }
+
+/**
+ * Smooth 0→1 ramp: 0 at or below `start`, 1 at or above `end`, an S-curve in between (zero slope
+ * at both ends, so effects built on it fade in and out without a visible step).
+ */
+export function smoothStep(start: number, end: number, value: number): number {
+  const t = clamp((value - start) / (end - start), 0, 1)
+  return t * t * (3 - 2 * t)
+}

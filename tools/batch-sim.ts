@@ -44,6 +44,10 @@ interface Totals {
   steals: number
   personalFouls: number
   technicalFouls: number
+  /** Players who reached the personal-foul limit (both teams). */
+  foulOuts: number
+  /** Team-games scoring under 70 points. */
+  under70: number
   fastBreakPoints: number
   pointsOffTurnovers: number
   playTypeAttempts: Record<PlayType, number>
@@ -75,6 +79,8 @@ function emptyTotals(): Totals {
     steals: 0,
     personalFouls: 0,
     technicalFouls: 0,
+    foulOuts: 0,
+    under70: 0,
     fastBreakPoints: 0,
     pointsOffTurnovers: 0,
     playTypeAttempts: zeroByPlay(),
@@ -112,6 +118,10 @@ function addTeamGame(
   totals.steals += sumLines(team, 'steals')
   totals.personalFouls += sumLines(team, 'personalFouls')
   totals.technicalFouls += sumLines(team, 'technicalFouls')
+  if (team.points < 70) totals.under70 += 1
+  totals.foulOuts += team.players.filter(
+    (line) => line.personalFouls >= PRO_RULES.personalFoulLimit,
+  ).length
   totals.fastBreakPoints += team.fastBreakPoints
   totals.pointsOffTurnovers += team.pointsOffTurnovers
   for (const type of PLAY_TYPES) {
@@ -186,6 +196,22 @@ function metrics(t: Totals): Metric[] {
       min: 0.4,
       max: 0.8,
       digits: 2,
+    },
+    {
+      label: 'Foul-outs / game',
+      value: t.foulOuts / t.games,
+      min: 0.1,
+      max: 0.3,
+      digits: 2,
+    },
+    {
+      // Low scores should come from team quality and tactics, never from propping up bad teams:
+      // this league is evenly matched average teams, so they should be rare here.
+      label: 'Team-games under 70 pts',
+      value: t.under70 / t.teamGames,
+      min: 0,
+      max: 0.01,
+      digits: 3,
     },
     {
       label: 'Fast-break points / team-game',
@@ -315,11 +341,17 @@ function runIdentical(games: number, seed: number): Metric[] {
     if (result.home.points > result.away.points) homeWins++
   }
   const homeMargin = margins.reduce((s, m) => s + m, 0) / games
+  // Final margins of exactly 11 or 12 (either way): a spike there means late intentional fouling
+  // stopped at a fixed deficit cap.
+  const elevenOrTwelve = margins.filter((m) => Math.abs(m) === 11 || Math.abs(m) === 12).length
   return [
-    { label: 'Margin SD (points)', value: standardDeviation(margins), min: 13, max: 15, digits: 1 },
+    // Target 12–14: the real spread left once team strength is accounted for (≈ what's left after
+    // betting lines), since identical teams have no strength gap at all.
+    { label: 'Margin SD (points)', value: standardDeviation(margins), min: 12, max: 14, digits: 1 },
     { label: 'Overtime rate (games)', value: overtimes / games, min: 0.05, max: 0.07, digits: 3 },
     { label: 'Home win rate', value: homeWins / games, digits: 3 },
     { label: 'Home margin (points)', value: homeMargin, digits: 2 },
+    { label: 'Finals decided by 11 or 12', value: elevenOrTwelve / games, digits: 3 },
   ]
 }
 

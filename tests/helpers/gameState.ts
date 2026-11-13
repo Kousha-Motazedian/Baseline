@@ -17,7 +17,10 @@ export interface TestGameOptions {
   seed?: number
   period?: number
   clock?: number
-  /** Overrides every player's rolled form (e.g. 0 to remove form noise from a unit test). */
+  /**
+   * Overrides every player's rolled form, offense and defense alike (e.g. 0 to remove form noise
+   * from a unit test).
+   */
   form?: number
 }
 
@@ -35,7 +38,9 @@ export function makeGameState(options: TestGameOptions): GameState {
   }
   if (options.form !== undefined) {
     for (const team of [game.home, game.away]) {
-      for (const id of team.form.keys()) team.form.set(id, options.form)
+      for (const id of team.form.keys()) {
+        team.form.set(id, { offense: options.form, defense: options.form })
+      }
     }
   }
   return game

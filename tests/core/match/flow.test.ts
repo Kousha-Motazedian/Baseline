@@ -9,6 +9,7 @@ import { pickHandler } from '../../../src/core/match/handler.ts'
 import { rushPenalty } from '../../../src/core/match/possession.ts'
 import { putbackChance } from '../../../src/core/match/rebound.ts'
 import {
+  endOfPeriodSeconds,
   holdsForLastShot,
   milkShare,
   scoreAdjustedSeconds,
@@ -16,6 +17,7 @@ import {
   wantsIntentionalFoul,
 } from '../../../src/core/match/scoreEffects.ts'
 import { roadEdge } from '../../../src/core/match/situation.ts'
+import { TYING_TWO_THREE_FACTOR } from '../../../src/core/match/tuning.ts'
 import { tryHandlerTurnover } from '../../../src/core/match/turnover.ts'
 import type { MatchResult } from '../../../src/core/match/types.ts'
 import type { Player } from '../../../src/core/players/types.ts'
@@ -194,22 +196,23 @@ describe('late-game score effects', () => {
   it('a tied team holds for the last shot', () => {
     const game = lateGame(0, 20)
     expect(holdsForLastShot(game, game.home, 24)).toBe(true)
-    expect(scoreAdjustedSeconds(game, game.home, 6, 24)).toBeCloseTo(18, 10)
+    expect(endOfPeriodSeconds(game, game.home, 6, 24, 5)).toBeCloseTo(18, 10)
     expect(holdsForLastShot(lateGame(0, 40), game.home, 24)).toBe(false)
   })
 
-  it('the trailing team fouls on purpose when down 4–10 in the last minute', () => {
-    expect(wantsIntentionalFoul(lateGame(6, 50), lateGame(6, 50).away)).toBe(true)
+  it('the trailing team fouls on purpose when down 4+ in the last 30 s, up to a shrinking cap', () => {
+    expect(wantsIntentionalFoul(lateGame(6, 25), lateGame(6, 25).away)).toBe(true)
+    // Cap at 0:25 is 3 + 25 / 6 ≈ 7.2 and at 0:06 it's 4; at 0:50 it's too early to foul.
     const cases: [number, number][] = [
-      [3, 50],
-      [11, 50],
-      [6, 90],
+      [8, 25],
+      [6, 50],
+      [5, 6],
     ]
     for (const [lead, clock] of cases) {
       const game = lateGame(lead, clock)
-      expect(wantsIntentionalFoul(game, game.away)).toBe(false)
+      expect(wantsIntentionalFoul(game, game.away, clock)).toBe(false)
     }
-    const leading = lateGame(6, 50)
+    const leading = lateGame(6, 25)
     expect(wantsIntentionalFoul(leading, leading.home)).toBe(false)
   })
 
@@ -221,8 +224,11 @@ describe('late-game score effects', () => {
       threePointHuntFactor(early, early.away),
     )
     expect(threePointHuntFactor(late, late.home)).toBe(1)
+    // Down 2 in the final 30 s the tying two is preferred; earlier, no change.
     const downTwo = lateGame(2, 10)
-    expect(threePointHuntFactor(downTwo, downTwo.away)).toBe(1)
+    expect(threePointHuntFactor(downTwo, downTwo.away)).toBe(TYING_TWO_THREE_FACTOR)
+    const downTwoEarly = lateGame(2, 60)
+    expect(threePointHuntFactor(downTwoEarly, downTwoEarly.away)).toBe(1)
   })
 
   it('rushes a shot the period clock cuts short', () => {

@@ -2,8 +2,9 @@ import { createRng } from '../shared/rng.ts'
 import type { LeagueRules } from '../world/rules.ts'
 import type { PossessionStart } from './possession.ts'
 import { HALF_COURT_START, simulatePossession } from './possession.ts'
+import { updateFoulTroubleBench } from './foulTrouble.ts'
 import type { GameState, TeamState } from './state.ts'
-import { createTeamState, log } from './state.ts'
+import { createTeamState, log, opponentOf } from './state.ts'
 import { resetTeamFouls } from './teamFouls.ts'
 import type { MatchResult, MatchTeam, TeamResult } from './types.ts'
 
@@ -16,11 +17,27 @@ export interface SimulateGameOptions {
   seed: number
 }
 
-/** Which team starts a period with the ball, following the alternating-possession rule. */
+/** A jump ball: either team wins it with equal chance. */
+function jumpBall(game: GameState): TeamState {
+  return game.rng.chance(0.5) ? game.home : game.away
+}
+
+/**
+ * Which team starts the current period with the ball, given who won the opening tip. The
+ * league's periodStartRule decides (see rules.ts).
+ */
 export function periodStarter(game: GameState, tipWinner: TeamState): TeamState {
-  const tipLoser = tipWinner === game.home ? game.away : game.home
-  // Pro rule: the tip winner starts Q1 and Q4; the other team starts Q2 and Q3.
-  // Overtime periods start with a new jump ball, handled by the caller.
+  const tipLoser = opponentOf(game, tipWinner)
+  if (game.period === 1) return tipWinner
+  if (game.rules.periodStartRule === 'alternatingArrow') {
+    // The arrow first points to the tip loser (period 2), then flips every period, overtimes
+    // included: tip loser in even periods, tip winner in odd ones. No held balls are modelled
+    // during play, so nothing else flips it.
+    return game.period % 2 === 0 ? tipLoser : tipWinner
+  }
+  // Pro: every overtime starts with a new jump ball.
+  if (game.period > game.rules.periods) return jumpBall(game)
+  // Pro: the tip loser starts the 2nd and 3rd quarters, the tip winner the 4th.
   return game.period === 2 || game.period === 3 ? tipLoser : tipWinner
 }
 
@@ -36,6 +53,10 @@ function playPeriod(game: GameState, lengthSeconds: number, starter: TeamState):
   let offense = starter
   let start: PossessionStart = HALF_COURT_START
   while (game.clock > 0) {
+    // STOPGAP foul-trouble benching: possession changes are the dead balls where the bench
+    // returns (a new period, or the late-game release).
+    updateFoulTroubleBench(game, game.home)
+    updateFoulTroubleBench(game, game.away)
     const defense = offense === game.home ? game.away : game.home
     const end = simulatePossession(game, offense, defense, start)
     start = { fastBreak: end.fastBreak, afterTurnover: end.turnover }
@@ -81,13 +102,13 @@ export function simulateGame(options: SimulateGameOptions): MatchResult {
     playByPlay: [],
   }
 
-  const tipWinner = rng.chance(0.5) ? game.home : game.away
+  const tipWinner = jumpBall(game)
   for (game.period = 1; game.period <= options.rules.periods; game.period++) {
     playPeriod(game, options.rules.periodSeconds, periodStarter(game, tipWinner))
   }
-  // Basketball can't end in a tie: keep playing overtime periods, each starting with a jump ball.
+  // Basketball can't end in a tie: keep playing overtime periods until there's a winner.
   while (game.home.points === game.away.points) {
-    playPeriod(game, options.rules.overtimeSeconds, rng.chance(0.5) ? game.home : game.away)
+    playPeriod(game, options.rules.overtimeSeconds, periodStarter(game, tipWinner))
     game.period++
   }
 

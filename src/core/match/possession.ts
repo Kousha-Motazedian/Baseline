@@ -6,20 +6,32 @@ import type { FastBreak } from './fastBreak.ts'
 import { startFastBreak, transitionHelpFactor } from './fastBreak.ts'
 import {
   commitFoul,
+  intentionalFouler,
   nonShootingFoulChance,
   nonShootingFoulLabel,
   offensiveFoulChance,
 } from './fouls.ts'
+import { foulCautionEdge } from './foulTrouble.ts'
 import { shootFreeThrows, worstFreeThrowShooter } from './freeThrows.ts'
 import { pickHandler } from './handler.ts'
 import type { ActionKind, ActionOutcome, NextAction } from './outcome.ts'
-import { continueWith } from './outcome.ts'
+import { continueWith, possessionOver } from './outcome.ts'
 import type { PlayChoice, PlayOptions } from './playSelection.ts'
 import { choosePlay } from './playSelection.ts'
-import { scoreAdjustedSeconds, threePointHuntFactor, wantsIntentionalFoul } from './scoreEffects.ts'
+import type { IntentionalFoulPlan } from './scoreEffects.ts'
+import {
+  awayFromPlayRuleApplies,
+  canRunOutClock,
+  endOfPeriodSeconds,
+  intentionalFoulPlan,
+  intentionalFoulSeconds,
+  milkShotPenalty,
+  scoreAdjustedSeconds,
+  threePointHuntFactor,
+} from './scoreEffects.ts'
 import { resolveShot } from './shot.ts'
 import type { GameState, TeamState } from './state.ts'
-import { matchupDefender, runClock } from './state.ts'
+import { log, matchupDefender, runClock } from './state.ts'
 import {
   ACTION_TIMING,
   BASE_CHARGE,
@@ -28,8 +40,6 @@ import {
   BASE_NON_SHOOTING_FOUL,
   BASE_PLAY_SHARE,
   BUZZER_SHOT_PENALTY,
-  INTENTIONAL_FOUL_MIN_SECONDS,
-  INTENTIONAL_FOUL_SPREAD_SECONDS,
   ON_BALL_FOUL_SHARE,
   TRANSITION_PLAY_SHARE,
 } from './tuning.ts'
@@ -74,17 +84,30 @@ export function actionSeconds(rng: Rng, kind: ActionKind, shotClock: number): nu
   return Math.min(seconds, shotClock)
 }
 
-/** Seconds for this action, including late-game clock management for set plays. */
-function setSeconds(
+/** How long a set takes, and the log-odds clock penalty on its shot (buzzer rush, milking). */
+interface SetTiming {
+  seconds: number
+  rush: number
+}
+
+/**
+ * Timing for a set, including late-game clock management. Fast breaks are instinctive: they keep
+ * their natural length (and can be rushed by the buzzer). Other sets stretch or shrink with the
+ * score, and near the end of a period they're timed to get the shot off before the buzzer.
+ */
+function setTiming(
   game: GameState,
   offense: TeamState,
   kind: ActionKind,
   shotClock: number,
-): number {
-  const seconds = actionSeconds(game.rng, kind, shotClock)
-  // Score effects change how long a set takes; putbacks and fast breaks are instinctive.
-  if (kind === 'transition') return seconds
-  return Math.min(scoreAdjustedSeconds(game, offense, seconds, shotClock), shotClock)
+): SetTiming {
+  const rolled = actionSeconds(game.rng, kind, shotClock)
+  if (kind === 'transition') return { seconds: rolled, rush: rushPenalty(game.clock, rolled) }
+  const adjusted = Math.min(scoreAdjustedSeconds(game, offense, rolled, shotClock), shotClock)
+  const timed = endOfPeriodSeconds(game, offense, adjusted, shotClock, ACTION_TIMING[kind].min)
+  const seconds = timed ?? adjusted
+  // A milked possession's late-clock shot is worse, like a shot rushed by the buzzer.
+  return { seconds, rush: rushPenalty(game.clock, seconds) + milkShotPenalty(game, offense) }
 }
 
 /** How the offense picks its play: fast-break looks, or half-court sets (with three hunting late). */
@@ -115,17 +138,18 @@ interface SetPlay {
   handler: Player
   play: PlayChoice
   fastBreak: FastBreak | undefined
-  /** Log-odds penalty if the period clock cut the action short. */
+  /** Log-odds clock penalty on the shot: cut short by the buzzer, or late in a milked shot clock. */
   rush: number
 }
 
 /** Handler phase, part 2: an offensive foul by the handler (push-off, moving screen in the action). */
 function tryHandlerOffensiveFoul(set: SetPlay, handlerDefender: Player): ActionOutcome | undefined {
   const { game, offense, handler } = set
-  const chance = offensiveFoulChance(BASE_HANDLER_OFFENSIVE_FOUL, handler, handlerDefender)
+  const caution = foulCautionEdge(game, offense, handler)
+  const chance = offensiveFoulChance(BASE_HANDLER_OFFENSIVE_FOUL, handler, handlerDefender, caution)
   if (!game.rng.chance(chance)) return undefined
   const outcome = offensiveFoulTurnover(game, offense, handler)
-  commitFoul(game, offense, handler, 'Offensive foul')
+  commitFoul(game, offense, handler, 'Offensive foul', 'offensive')
   return outcome
 }
 
@@ -139,7 +163,8 @@ function tryNonShootingFoul(set: SetPlay, handlerDefender: Player): ActionOutcom
   const onBall = play.player === handler || game.rng.chance(ON_BALL_FOUL_SHARE)
   const victim = onBall ? handler : play.player
   const fouler = onBall ? handlerDefender : play.contesters.defender
-  if (!game.rng.chance(nonShootingFoulChance(BASE_NON_SHOOTING_FOUL, victim, fouler)))
+  const caution = foulCautionEdge(game, defense, fouler)
+  if (!game.rng.chance(nonShootingFoulChance(BASE_NON_SHOOTING_FOUL, victim, fouler, caution)))
     return undefined
   const penalty = commitFoul(game, defense, fouler, nonShootingFoulLabel(game, onBall))
   if (!penalty) return continueWith({ kind: 'sideOut' })
@@ -151,10 +176,11 @@ function tryCharge(set: SetPlay): ActionOutcome | undefined {
   const { game, offense, play } = set
   // The help defender draws charges too, in proportion to his share of the contest.
   const drawer = pickContester(game.rng, play.contesters, play.playType)
-  const chance = offensiveFoulChance(BASE_CHARGE[play.playType], play.player, drawer)
+  const caution = foulCautionEdge(game, offense, play.player)
+  const chance = offensiveFoulChance(BASE_CHARGE[play.playType], play.player, drawer, caution)
   if (!game.rng.chance(chance)) return undefined
   const outcome = offensiveFoulTurnover(game, offense, play.player)
-  commitFoul(game, offense, play.player, 'Offensive foul (charge)')
+  commitFoul(game, offense, play.player, 'Offensive foul (charge)', 'offensive')
   return outcome
 }
 
@@ -219,8 +245,7 @@ function runSet(
   const handler =
     starter && offense.onCourt.includes(starter) ? starter : pickHandler(game.rng, offense.onCourt)
   const play = choosePlay(game.rng, offense, defense, playOptions(game, offense, fastBreak))
-  const seconds = setSeconds(game, offense, action.kind, shotClock)
-  const rush = rushPenalty(game.clock, seconds)
+  const { seconds, rush } = setTiming(game, offense, action.kind, shotClock)
   runClock(game, seconds)
   return playOutSet({ game, offense, defense, handler, play, fastBreak, rush })
 }
@@ -259,16 +284,50 @@ function runPutback(
 }
 
 /**
- * The trailing defense fouls on purpose: quickly, on the offense's worst free-throw shooter.
- * It counts toward team fouls like any other; free throws only once they're in the bonus.
+ * Who the defense fouls on purpose. Denying the tying three, it fouls whoever has the ball before
+ * he can shoot. Stopping the clock, it would rather send the offense's worst free-throw shooter
+ * to the line, but where the away-from-the-play rule applies (pro, last 2:00) fouling anyone but
+ * the ball handler costs a free throw plus possession, so it fouls the ball handler (or the
+ * inbound receiver: the same pick). FIBA has no such rule; its unsportsmanlike-foul rule (an
+ * obvious foul with no play on the ball: 2 free throws plus possession) isn't modelled.
  */
-function intentionalFoul(game: GameState, offense: TeamState, defense: TeamState): ActionOutcome {
-  runClock(game, INTENTIONAL_FOUL_MIN_SECONDS + game.rng.next() * INTENTIONAL_FOUL_SPREAD_SECONDS)
-  const target = worstFreeThrowShooter(offense.onCourt)
-  const fouler = matchupDefender(offense, defense, target)
-  const penalty = commitFoul(game, defense, fouler, 'Intentional foul')
+function intentionalFoulTarget(
+  game: GameState,
+  offense: TeamState,
+  plan: IntentionalFoulPlan,
+): Player {
+  if (plan === 'denyThree' || awayFromPlayRuleApplies(game)) {
+    return pickHandler(game.rng, offense.onCourt)
+  }
+  return worstFreeThrowShooter(offense.onCourt)
+}
+
+/**
+ * The defense fouls on purpose, quickly (see IntentionalFoulPlan for why). It counts toward team
+ * fouls like any other; free throws only once they're in the bonus, otherwise a side-out.
+ */
+function intentionalFoul(
+  game: GameState,
+  offense: TeamState,
+  defense: TeamState,
+  plan: IntentionalFoulPlan,
+): ActionOutcome {
+  runClock(game, intentionalFoulSeconds(game))
+  const target = intentionalFoulTarget(game, offense, plan)
+  const fouler = intentionalFouler(game, offense, defense, target)
+  const penalty = commitFoul(game, defense, fouler, 'Intentional foul', 'intentional')
   if (!penalty) return continueWith({ kind: 'sideOut' })
   return shootFreeThrows(game, offense, defense, target, game.rules.penaltyFreeThrows)
+}
+
+/**
+ * A leading team that can run out the clock just holds the ball: no shot, no rushed heave; the
+ * period ends with the possession.
+ */
+function runOutClock(game: GameState, offense: TeamState): ActionOutcome {
+  runClock(game, game.clock)
+  log(game, offense, `${offense.team.name} run out the clock`)
+  return possessionOver()
 }
 
 /** Runs one action of whatever kind and returns how it ended. */
@@ -279,7 +338,10 @@ function runAction(
   action: Action,
   shotClock: number,
 ): ActionOutcome {
-  if (wantsIntentionalFoul(game, defense)) return intentionalFoul(game, offense, defense)
+  // The defense moves first: a trailing team fouls before the leader can run out the clock.
+  const foulPlan = intentionalFoulPlan(game, defense, shotClock)
+  if (foulPlan) return intentionalFoul(game, offense, defense, foulPlan)
+  if (canRunOutClock(game, offense, shotClock)) return runOutClock(game, offense)
   if (action.kind === 'putback') {
     return runPutback(game, offense, defense, action.rebounder, shotClock)
   }

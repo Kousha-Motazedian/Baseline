@@ -2,7 +2,8 @@ import type { Player } from '../players/types.ts'
 import { normalizeRating } from '../shared/probability.ts'
 import type { Contesters } from './contest.ts'
 import { blendByHelp } from './contest.ts'
-import type { GameState, TeamState } from './state.ts'
+import { easeOffEdge } from './blowout.ts'
+import type { CourtEnd, GameState, TeamState } from './state.ts'
 import { isClutch } from './state.ts'
 import {
   CLUTCH_EDGE_WEIGHT,
@@ -14,14 +15,17 @@ import {
 import type { PlayType } from './types.ts'
 
 /**
- * Situational modifiers (game-day form, clutch composure and the road crowd). They apply to BOTH ends of the
- * floor: an offensive player's good day is offset by a defender's good day, so neither side
- * gets a systematic boost from these effects.
+ * Situational modifiers (game-day form, clutch composure, the road crowd and easing off in a
+ * blowout). They apply to BOTH ends of the floor: an offensive player's good day is offset by a
+ * defender's good day, so neither side gets a systematic boost from these effects.
  */
 
-/** A player's game-day form as a log-odds edge (rolled at tip-off from the hidden Consistency). */
-export function formEdge(team: TeamState, player: Player): number {
-  return team.form.get(player.id) ?? 0
+/**
+ * A player's game-day form at one end of the floor, as a log-odds edge (rolled at tip-off from
+ * the hidden Consistency; offense and defense are separate rolls).
+ */
+export function formEdge(team: TeamState, player: Player, end: CourtEnd): number {
+  return team.form.get(player.id)?.[end] ?? 0
 }
 
 /** A player's composure edge in clutch time (zero outside clutch time). */
@@ -41,9 +45,22 @@ export function roadEdge(team: TeamState, player: Player): number {
   return -ROAD_CROWD_EDGE * Math.max(0, exposure)
 }
 
-/** Form, clutch composure and the road crowd for one player: everything about today's situation. */
-export function personalEdge(game: GameState, team: TeamState, player: Player): number {
-  return formEdge(team, player) + clutchEdge(game, player) + roadEdge(team, player)
+/**
+ * Form, clutch composure, the road crowd and blowout easing for one player at one end of the
+ * floor: everything about today's situation.
+ */
+export function personalEdge(
+  game: GameState,
+  team: TeamState,
+  player: Player,
+  end: CourtEnd,
+): number {
+  return (
+    formEdge(team, player, end) +
+    clutchEdge(game, player) +
+    roadEdge(team, player) +
+    easeOffEdge(game, team)
+  )
 }
 
 /**
@@ -59,8 +76,8 @@ export function contestSituationalEdge(
 ): number {
   return blendByHelp(
     playType,
-    personalEdge(game, defense, contesters.defender),
-    personalEdge(game, defense, contesters.rimProtector),
+    personalEdge(game, defense, contesters.defender, 'defense'),
+    personalEdge(game, defense, contesters.rimProtector, 'defense'),
     contesters.helpFactor,
   )
 }

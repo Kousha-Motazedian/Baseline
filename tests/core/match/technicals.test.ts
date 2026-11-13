@@ -129,6 +129,19 @@ describe('ejection and foul limits', () => {
 })
 
 describe('pro no-bench rule (stays on)', () => {
+  it('applies only to foul-outs: an ejected player leaves even with no bench', () => {
+    const game = state(PRO_RULES, makeFlatTeam('A', 10, 5))
+    const player = slot(game.home.onCourt, 1)
+    disqualify(game, game.home, player, 'ejected')
+    expect(game.home.onCourt).not.toContain(player)
+    expect(game.home.onCourt).toHaveLength(4)
+    expect(game.playByPlay.at(-1)?.text).toMatch(/is ejected; Team A play with 4$/)
+    // A foul-out with no bench still stays on.
+    const other = slot(game.home.onCourt, 0)
+    disqualify(game, game.home, other, 'fouledOut')
+    expect(game.home.onCourt).toContain(other)
+  })
+
   it('a disqualified player who stays on is charged a team technical, not a 7th foul', () => {
     const game = state(PRO_RULES, makeFlatTeam('A', 10, 5))
     const player = slot(game.home.onCourt, 1)
@@ -200,5 +213,36 @@ describe('running out of players', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
       })
     }
     expect(teamTechnicals).toBeGreaterThan(10)
+  })
+})
+
+describe('ejection with no bench (tester round 3)', () => {
+  it('FIBA: an ejected player leaves the floor with no bench, like a foul-out', () => {
+    const game = state(FIBA_RULES, makeFlatTeam('A', 10, 5))
+    const player = slot(game.home.onCourt, 2)
+    disqualify(game, game.home, player, 'ejected')
+    expect(game.home.onCourt).not.toContain(player)
+    expect(game.home.onCourt).toHaveLength(4)
+    expect(game.home.regulars).toHaveLength(4)
+  })
+
+  it('the last player on the floor stays on even when ejected', () => {
+    const game = state(PRO_RULES, makeFlatTeam('A', 10, 5))
+    for (let i = 0; i < 4; i++) disqualify(game, game.home, slot(game.home.onCourt, 0), 'ejected')
+    expect(game.home.onCourt).toHaveLength(1)
+    const last = slot(game.home.onCourt, 0)
+    disqualify(game, game.home, last, 'ejected')
+    expect(game.home.onCourt).toEqual([last])
+    expect(game.playByPlay.at(-1)?.text).toMatch(/is ejected but stays in/)
+  })
+
+  it('a second technical ejects through assessTechnical with no bench (pro)', () => {
+    const game = state(PRO_RULES, makeFlatTeam('A', 10, 5))
+    const player = slot(game.home.onCourt, 4)
+    assessTechnical(game, game.home, player)
+    expect(game.home.onCourt).toContain(player)
+    assessTechnical(game, game.home, player)
+    expect(game.home.onCourt).not.toContain(player)
+    expect(game.home.onCourt).toHaveLength(4)
   })
 })

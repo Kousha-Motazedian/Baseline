@@ -3,6 +3,7 @@ import { adjustProbability, normalizeRating } from '../shared/probability.ts'
 import { describeShot } from './describe.ts'
 import type { FastBreak } from './fastBreak.ts'
 import { transitionFoulEdge, transitionShotEdge } from './fastBreak.ts'
+import { foulCautionEdge } from './foulTrouble.ts'
 import { commitFoul } from './fouls.ts'
 import { shootFreeThrows } from './freeThrows.ts'
 import type { Contesters } from './contest.ts'
@@ -18,6 +19,7 @@ import type { ActionOutcome } from './outcome.ts'
 import { possessionOver } from './outcome.ts'
 import { blockSkill, heightEdge, offensiveSkill } from './ratings.ts'
 import { resolveRebound } from './rebound.ts'
+import { keyedDefensePenalty } from './scoreEffects.ts'
 import type { GameState, TeamState } from './state.ts'
 import { contestSituationalEdge, personalEdge } from './situation.ts'
 import { addPoints, lineOf, log, shortName } from './state.ts'
@@ -48,13 +50,16 @@ export interface ShotContext {
   passer?: Player
   /** Set when the shot comes on a fast break. */
   fastBreak?: FastBreak
-  /** Log-odds penalty when the period clock forced a rushed shot (a heave at the buzzer). */
+  /**
+   * Log-odds penalty from the clock: a shot rushed by the end of the period (a heave at the
+   * buzzer) and/or a late-shot-clock shot by a team running clock.
+   */
   rushPenalty?: number
 }
 
 /** The offense's situational edge: shooter's form, composure and the crowd, plus home court. */
 function offenseSituationalEdge(ctx: ShotContext): number {
-  const edge = personalEdge(ctx.game, ctx.offense, ctx.shooter)
+  const edge = personalEdge(ctx.game, ctx.offense, ctx.shooter, 'offense')
   return ctx.offense.isHome ? edge + HOME_SHOOTING_EDGE : edge
 }
 
@@ -83,6 +88,7 @@ export function makeChance(ctx: ShotContext): number {
     sizeEdge(ctx) +
     numbersEdge(ctx) +
     transitionShotEdge(ctx.fastBreak) -
+    keyedDefensePenalty(ctx.game) -
     (ctx.rushPenalty ?? 0)
   return adjustProbability(BASE_MAKE[ctx.playType], edge)
 }
@@ -104,8 +110,23 @@ export function shootingFoulChance(ctx: ShotContext): number {
   const edge =
     FOUL_EDGE_WEIGHT * normalizeRating(ctx.shooter.attributes.aggression) -
     FOUL_EDGE_WEIGHT * normalizeRating(discipline) +
-    transitionFoulEdge(ctx.fastBreak)
+    transitionFoulEdge(ctx.fastBreak) +
+    contestCaution(ctx)
   return adjustProbability(BASE_SHOOTING_FOUL[ctx.playType], edge)
+}
+
+/**
+ * Foul-trouble caution of the contest (zero or negative log-odds): a contester one foul from
+ * disqualification counts in proportion to his share of the contest, like his Discipline.
+ */
+function contestCaution(ctx: ShotContext): number {
+  const { game, defense, contesters } = ctx
+  return blendByHelp(
+    ctx.playType,
+    foulCautionEdge(game, defense, contesters.defender),
+    foulCautionEdge(game, defense, contesters.rimProtector),
+    contesters.helpFactor,
+  )
 }
 
 /** Chance a made shot off a pass counts as an assist: better passers set up better shots. */
@@ -131,7 +152,8 @@ function maybeCreditAssist(ctx: ShotContext): string {
 /** Decides whether a missed shot was blocked, and by whom. Returns the blocker, or undefined. */
 function maybeBlock(ctx: ShotContext): Player | undefined {
   // Inside shots are usually blocked by the rim protector; jumpers only by the man guarding the
-  // shooter. In transition the rim protector is often not back, so he blocks less.
+  // shooter. On a fast break where the offense outnumbers the defense nobody is back to help, so
+  // only the on-ball defender can block (otherwise the rim protector still blocks inside shots).
   const help = isInsideShot(ctx.playType) && ctx.contesters.helpFactor !== 0
   const blocker = help ? ctx.contesters.rimProtector : ctx.contesters.defender
   const edge = normalizeRating(blockSkill(blocker)) + HEIGHT_EDGE_WEIGHT * heightEdge(blocker)

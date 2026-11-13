@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   commitFoul,
+  intentionalFouler,
   nonShootingFoulChance,
   offensiveFoulChance,
 } from '../../../src/core/match/fouls.ts'
@@ -248,4 +249,53 @@ describe('no-bench disqualification', () => {
       expect(shortHanded).toBeGreaterThan(0)
     },
   )
+})
+
+describe('intentional fouls: who fouls, and no technicals (tester round 3)', () => {
+  /** A flat pro game with personal fouls preset on the home defenders, by slot. */
+  function withFouls(fouls: readonly number[]): GameState {
+    const game = makeGameState({ home: makeFlatTeam('A', 10), away: makeFlatTeam('B', 10) })
+    fouls.forEach((count, i) => {
+      const line = game.home.lines.get(slot(game.home.onCourt, i).id)
+      if (line) line.personalFouls = count
+    })
+    return game
+  }
+
+  it('picks the defender with the fewest fouls; the target’s own man wins a tie', () => {
+    const tied = withFouls([1, 1, 1, 1, 1])
+    const target = slot(tied.away.onCourt, 3)
+    expect(intentionalFouler(tied, tied.away, tied.home, target)).toBe(slot(tied.home.onCourt, 3))
+    const game = withFouls([3, 2, 0, 1, 4])
+    expect(intentionalFouler(game, game.away, game.home, target)).toBe(slot(game.home.onCourt, 2))
+  })
+
+  it('never uses a defender it would foul out unless nobody is safe', () => {
+    const game = withFouls([5, 5, 5, 4, 5])
+    const target = slot(game.away.onCourt, 0)
+    expect(intentionalFouler(game, game.away, game.home, target)).toBe(slot(game.home.onCourt, 3))
+    const nobodySafe = withFouls([5, 5, 5, 5, 5])
+    // Everyone is one away: falls back to the target's own man (all tied).
+    expect(intentionalFouler(nobodySafe, nobodySafe.away, nobodySafe.home, target)).toBe(
+      slot(nobodySafe.home.onCourt, 0),
+    )
+  })
+
+  it('skips a disqualified player who had to stay on (his foul would be a technical)', () => {
+    const game = withFouls([6, 2, 2, 2, 2])
+    const out = slot(game.home.onCourt, 0)
+    game.home.disqualified.add(out.id)
+    const target = slot(game.away.onCourt, 0)
+    expect(intentionalFouler(game, game.away, game.home, target)).not.toBe(out)
+  })
+
+  it('an intentional foul never rolls a technical, even for a hothead', () => {
+    const hotheads = patchTeam(makeFlatTeam('A', 10), { discipline: 1 })
+    for (const p of hotheads.roster) p.hidden.temperament = 1
+    for (let seed = 0; seed < 300; seed++) {
+      const game = makeGameState({ home: hotheads, away: makeFlatTeam('B', 10), seed })
+      commitFoul(game, game.home, slot(game.home.onCourt, 0), 'Intentional foul', 'intentional')
+      expect(game.playByPlay.some((e) => /^Technical/.test(e.text))).toBe(false)
+    }
+  })
 })

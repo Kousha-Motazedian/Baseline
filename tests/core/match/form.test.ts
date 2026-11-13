@@ -2,7 +2,7 @@
  * Game-day form from the hidden Consistency attribute: the spread curve and the shape of the roll.
  */
 import { describe, expect, it } from 'vitest'
-import { formSpread, rollForm } from '../../../src/core/match/state.ts'
+import { formSpread, rollForm, rollPlayerForm } from '../../../src/core/match/state.ts'
 import { FORM_CLAMP_SDS } from '../../../src/core/match/tuning.ts'
 import { createRng } from '../../../src/core/shared/rng.ts'
 import { makePlayer } from '../../helpers/fixtures.ts'
@@ -38,5 +38,26 @@ describe('Consistency → form spread', () => {
       expect(standardDeviation(draws) / sd).toBeLessThan(1.02)
       for (const x of draws) expect(Math.abs(x)).toBeLessThanOrEqual(FORM_CLAMP_SDS * sd + 1e-12)
     }
+  })
+})
+
+describe('offensive and defensive form', () => {
+  it('are independent rolls with the same Consistency-driven spread', () => {
+    const rng = createRng(11)
+    const player = makePlayer({ id: 'p', consistency: 4 })
+    const rollsList = Array.from({ length: 20_000 }, () => rollPlayerForm(rng, player))
+    const offense = rollsList.map((f) => f.offense)
+    const defense = rollsList.map((f) => f.defense)
+    const sd = formSpread(4)
+    for (const end of [offense, defense]) {
+      expect(standardDeviation(end) / sd).toBeGreaterThan(0.95)
+      expect(standardDeviation(end) / sd).toBeLessThan(1.02)
+    }
+    // Correlation near zero: a hot shooting night says nothing about his defense.
+    const mo = mean(offense)
+    const md = mean(defense)
+    const covariance = mean(offense.map((o, i) => (o - mo) * ((defense[i] as number) - md)))
+    const correlation = covariance / (standardDeviation(offense) * standardDeviation(defense))
+    expect(Math.abs(correlation)).toBeLessThan(0.03)
   })
 })

@@ -19,6 +19,18 @@ import { PLAY_TYPES } from './types.ts'
  * which keeps each step simple; the finished result handed back to callers is plain data.
  */
 
+/**
+ * A player's game-day form as log-odds edges, rolled independently for each end of the floor:
+ * a hot shooting night says nothing about how well he defends.
+ */
+export interface PlayerForm {
+  offense: number
+  defense: number
+}
+
+/** Which end of the floor a player is acting at (picks which form roll applies). */
+export type CourtEnd = 'offense' | 'defense'
+
 /** One team's live state during a game. */
 export interface TeamState {
   team: MatchTeam
@@ -28,9 +40,15 @@ export interface TeamState {
    * players). Index = lineup slot; slot i guards the opponent's slot i.
    */
   onCourt: Player[]
+  /**
+   * The player each lineup slot belongs to when nobody is in foul trouble (parallel to onCourt).
+   * Starts as the starters; a disqualified regular's replacement takes over his slot. Foul-trouble
+   * benching (foulTrouble.ts, a stopgap) puts a sub in the slot and brings the regular back later.
+   */
+  regulars: Player[]
   lines: Map<string, PlayerLine>
-  /** Game-day form per player, as a log-odds edge (from the hidden Consistency attribute). */
-  form: Map<string, number>
+  /** Game-day form per player, offense and defense (from the hidden Consistency attribute). */
+  form: Map<string, PlayerForm>
   /** Ids of players who fouled out or were ejected; they can never check back in. */
   disqualified: Set<string>
   /** Team fouls in the current foul period (a quarter, or an overtime unless they carry over). */
@@ -111,6 +129,15 @@ export function rollForm(rng: Rng, player: Player): number {
   return clamp(randomNormal(rng, 0, sd), -FORM_CLAMP_SDS * sd, FORM_CLAMP_SDS * sd)
 }
 
+/**
+ * Rolls a player's offensive and defensive form for today's game. They're independent: one roll
+ * moving both ends together made each player's net impact swing twice as far, which inflated the
+ * final-margin spread (~1.3 points of SD) without making any single game more realistic.
+ */
+export function rollPlayerForm(rng: Rng, player: Player): PlayerForm {
+  return { offense: rollForm(rng, player), defense: rollForm(rng, player) }
+}
+
 /** Sets up a team's state at tip-off: starters on the floor, empty box score, form rolled. */
 export function createTeamState(rng: Rng, team: MatchTeam, isHome: boolean): TeamState {
   if (team.roster.length < 5) throw new RangeError(`${team.name} needs at least 5 players`)
@@ -118,8 +145,9 @@ export function createTeamState(rng: Rng, team: MatchTeam, isHome: boolean): Tea
     team,
     isHome,
     onCourt: team.roster.slice(0, 5),
+    regulars: team.roster.slice(0, 5),
     lines: new Map(team.roster.map((p) => [p.id, createPlayerLine(p)])),
-    form: new Map(team.roster.map((p) => [p.id, rollForm(rng, p)])),
+    form: new Map(team.roster.map((p) => [p.id, rollPlayerForm(rng, p)])),
     disqualified: new Set(),
     teamFouls: 0,
     lateTeamFouls: 0,

@@ -38,7 +38,10 @@ export function turnoverChanceFromSkills(
   return adjustProbability(base, -matchupEdge(security, pressure) - situationalEdge)
 }
 
-/** Chance the ball handler turns it over against this defender (handler phase, no pass). */
+/**
+ * Chance a player turns it over against this defender on dribble security alone (the handler
+ * phase when he keeps the ball; when he passes, tryHandlerTurnover also blends in Pass Security).
+ */
 export function turnoverChance(
   handler: Player,
   defender: Player,
@@ -66,7 +69,10 @@ function situational(
   player: Player,
   defender: Player,
 ): number {
-  return personalEdge(game, offense, player) - personalEdge(game, defense, defender)
+  return (
+    personalEdge(game, offense, player, 'offense') -
+    personalEdge(game, defense, defender, 'defense')
+  )
 }
 
 /** Records a turnover (and a steal, if any) and returns the end of the possession. */
@@ -98,7 +104,7 @@ export interface HandlerPhase {
   /** The player the handler is getting the ball to (the handler himself if he keeps it). */
   receiver: Player
   receiverDefender: Player
-  /** Base chance for this kind of action (lower in transition, etc.). */
+  /** Base chance of a handler-phase turnover (BASE_HANDLER_TURNOVER on every set today). */
   base: number
 }
 

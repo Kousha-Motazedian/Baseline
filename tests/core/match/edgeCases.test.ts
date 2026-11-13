@@ -43,9 +43,14 @@ describe('small rosters', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
       expectValidResult(r, PRO_RULES)
       const [team] = sides(r, 'F')
       expect(team.players).toHaveLength(5)
-      // With no bench, everyone plays the whole game.
+      // With no bench, everyone plays the whole game, except a player ejected on technicals:
+      // he always leaves the floor (only foul-outs stay on under the pro no-bench rule).
       for (const line of team.players) {
-        expect(line.secondsPlayed).toBeCloseTo(gameSeconds(r, PRO_RULES), 6)
+        if (line.technicalFouls >= PRO_RULES.technicalFoulsToEject) {
+          expect(line.secondsPlayed).toBeLessThan(gameSeconds(r, PRO_RULES))
+        } else {
+          expect(line.secondsPlayed).toBeCloseTo(gameSeconds(r, PRO_RULES), 6)
+        }
       }
     }
   })

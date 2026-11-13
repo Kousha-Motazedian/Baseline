@@ -43,7 +43,6 @@ describe('box score integrity (200 generated games)', { timeout: SLOW_TEST_TIMEO
   it('produces realistic game-level ranges (no runaway or empty scores)', () => {
     for (const r of games) {
       for (const team of [r.home, r.away]) {
-        expect(team.points).toBeGreaterThan(70)
         expect(team.points).toBeLessThan(170)
         // Per 48 minutes, so a double-overtime game (~58 minutes) isn't flagged as runaway pace.
         const per48 = (team.possessions / gameSeconds(r, PRO_RULES)) * 48 * 60
@@ -52,5 +51,15 @@ describe('box score integrity (200 generated games)', { timeout: SLOW_TEST_TIMEO
         expect(teamTotal(team, 'fieldGoalsAttempted')).toBeGreaterThan(60)
       }
     }
+  })
+
+  it('keeps sub-70 scores rare in typical league games (at most 1% of team-games)', () => {
+    // A rate, not a floor. Design intent (user): low scores should come from team quality and
+    // tactics (bad teams, tanking), never from inflating bad teams' scoring to meet a target. So
+    // this checks typical games between similar league-average teams only; a real mismatch may
+    // legitimately score lower.
+    const teamGames = games.flatMap((r) => [r.home, r.away])
+    const under70 = teamGames.filter((team) => team.points < 70).length
+    expect(under70 / teamGames.length).toBeLessThanOrEqual(0.01)
   })
 })

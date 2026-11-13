@@ -49,11 +49,13 @@ function checkLine(line: PlayerLine, rules: LeagueRules): void {
 }
 
 /**
- * True if the team may have played short-handed: under a "play short-handed" rule, more players
- * were disqualified than it had substitutes.
+ * True if the team may have played short-handed: more players were disqualified than it had
+ * substitutes, and either the league plays short-handed after foul-outs or someone was ejected
+ * (an ejected player always leaves the floor).
  */
 function mayPlayShortHanded(team: TeamResult, rules: LeagueRules): boolean {
-  if (rules.noBenchDisqualification !== 'playShorthanded') return false
+  const ejected = team.players.some((l) => l.technicalFouls >= rules.technicalFoulsToEject)
+  if (rules.noBenchDisqualification !== 'playShorthanded' && !ejected) return false
   const disqualified = team.players.filter(
     (l) =>
       l.personalFouls >= rules.personalFoulLimit || l.technicalFouls >= rules.technicalFoulsToEject,

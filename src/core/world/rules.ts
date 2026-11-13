@@ -12,6 +12,15 @@
  */
 export type NoBenchDisqualificationRule = 'staysOn' | 'playShorthanded'
 
+/**
+ * Who starts each period after the opening tip (no held balls are modelled during play):
+ * - `quarterRotation`: the opening-tip loser starts Q2 and Q3, the winner Q4; every overtime
+ *   starts with a new jump ball (North American pro).
+ * - `alternatingArrow`: the alternating-possession arrow. The team that lost the opening tip
+ *   starts Q2, then it alternates every period, overtimes included (FIBA).
+ */
+export type PeriodStartRule = 'quarterRotation' | 'alternatingArrow'
+
 /** The game rules a league plays under. */
 export interface LeagueRules {
   name: string
@@ -43,6 +52,11 @@ export interface LeagueRules {
    * fouls before the bonus, whatever its period total (pro: last 2:00). Null = no such rule.
    */
   lateFoulWindowSeconds: number | null
+  /**
+   * Final-period/overtime window (seconds) in which a foul away from the play gives the opponent
+   * one free throw (any shooter) plus possession (NBA, last 2:00). Null = no such rule.
+   */
+  awayFromPlayFoulWindowSeconds: number | null
   /** Fouls allowed inside the late window before the bonus applies. */
   lateFoulsBeforePenalty: number
   /** Free throws awarded for a penalized non-shooting foul. */
@@ -51,8 +65,18 @@ export interface LeagueRules {
   technicalFoulsToEject: number
   /** True if a technical foul also counts toward the personal-foul limit (FIBA). */
   technicalsCountTowardFoulLimit: boolean
-  /** What happens when a disqualified player has nobody to replace him. */
+  /**
+   * True if offensive fouls also count as team fouls toward the bonus (FIBA). Either way they are
+   * personal fouls.
+   */
+  offensiveFoulsCountAsTeamFouls: boolean
+  /**
+   * What happens when a player who FOULED OUT has nobody to replace him. A player ejected on
+   * technicals always leaves the floor, whatever this says.
+   */
   noBenchDisqualification: NoBenchDisqualificationRule
+  /** Who starts each period with the ball after the opening tip. */
+  periodStartRule: PeriodStartRule
 }
 
 /** North American pro rules: 4 x 12-minute quarters, foul out on 6. */
@@ -71,11 +95,18 @@ export const PRO_RULES: LeagueRules = {
   overtimeTeamFoulsCarryOver: false,
   // A team's 2nd foul in the last 2:00 of any period shoots, even if it's under the period limit.
   lateFoulWindowSeconds: 120,
+  // NBA away-from-the-play rule: in the last 2:00 of Q4/OT an off-ball foul shoots 1 + the ball.
+  awayFromPlayFoulWindowSeconds: 120,
   lateFoulsBeforePenalty: 1,
   penaltyFreeThrows: 2,
   technicalFoulsToEject: 2,
   technicalsCountTowardFoulLimit: false,
+  // Our reading of the NBA rulebook (Rule 12B): offensive fouls (charges included) are personal
+  // fouls but are not counted toward the team-foul penalty. Check against the rulebook before
+  // relying on it for a licensed league.
+  offensiveFoulsCountAsTeamFouls: false,
   noBenchDisqualification: 'staysOn',
+  periodStartRule: 'quarterRotation',
 }
 
 /** FIBA/international rules: 4 x 10-minute quarters, foul out on 5. */
@@ -93,9 +124,17 @@ export const FIBA_RULES: LeagueRules = {
   overtimeTeamFoulsBeforePenalty: 4,
   overtimeTeamFoulsCarryOver: true,
   lateFoulWindowSeconds: null,
+  // FIBA has no away-from-the-play rule (its unsportsmanlike foul isn't modelled).
+  awayFromPlayFoulWindowSeconds: null,
   lateFoulsBeforePenalty: 0,
   penaltyFreeThrows: 2,
   technicalFoulsToEject: 2,
   technicalsCountTowardFoulLimit: true,
+  // Our reading of the FIBA rules (Art. 41): every player foul, offensive ones included, is a
+  // team foul. Check against the current rulebook.
+  offensiveFoulsCountAsTeamFouls: true,
   noBenchDisqualification: 'playShorthanded',
+  // FIBA Art. 12.5: every period after the first, overtimes included, starts with an
+  // alternating-possession throw-in; the arrow first points to the team that lost the opening tip.
+  periodStartRule: 'alternatingArrow',
 }
