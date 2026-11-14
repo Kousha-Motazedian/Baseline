@@ -13,6 +13,7 @@ A desktop basketball management simulation (GM/coach career game). The player bu
 
 - Dev: `npm run dev` · Build: `npm run build`
 - Test: `npm test` · Lint: `npm run lint` · Typecheck: `npm run typecheck`
+- Match sims: `npm run sim:game [-- seed]` (one game, box score) · `npm run sim:batch [-- --balance]` (league averages vs. targets, balance tests)
 - Run test, lint, and typecheck before saying a task is done.
 
 ## Architecture
@@ -57,6 +58,7 @@ tests/                Mirrors the src/ folder structure
 Game design decisions live in `docs/design/`. Read the relevant doc before implementing a system, and update it when a decision changes.
 
 - `docs/design/player-attributes.md` — attribute list, scales, Current Ability/Potential, hidden attributes
+- `docs/design/match-engine.md` — match engine flow, log-odds edge model, bias fixes, calibration targets and results
 
 ## Code style (applies to the entire codebase, not just the engine)
 
@@ -73,5 +75,17 @@ Game design decisions live in `docs/design/`. Read the relevant doc before imple
 ## Workflow
 
 - Ask before adding a new dependency.
-- Don't commit unless asked.
+- Every change uses two subagents, run in order:
+  1. **Developer agent**: implements the change, following this file and the relevant design docs.
+  2. **Tester agent**: writes/updates tests, verifies the change independently (incl. batch-sim/balance checks for engine changes), and reports issues. It does not edit `src/`; fixes go back through the developer agent.
+- **Commits:** always ask the user before committing to a branch, every time, regardless of review results.
+- **Pushing:** only when the user says to push to a branch. At that point (and not before), run a **final review agent on the Fable model**. It:
+  1. Looks through all the changed code one last time and reports any issues it finds.
+  2. Cleans up the code (style, dead code, comments, consistency with this file).
+  3. Performs final testing: `npm test`, `npm run typecheck`, `npm run lint`, `npx prettier --check .`, plus `npm run sim:batch` for engine changes.
+- **Triaging Fable findings** (each finding gets a severity: low, medium, high):
+  - **Already in `docs/TODO.md`:** ignore it; it's already tracked.
+  - **Low:** add it to `docs/TODO.md` automatically. It doesn't need fixing now and doesn't block the push.
+  - **Medium or high:** notify the user so they can triage it (fix now, defer to `docs/TODO.md`, or accept). Don't push until every medium/high finding has been triaged and any fixes chosen are made and re-reviewed.
+- If the Fable review finds no medium/high issues, push to the branch (asking before any commit the push needs, including one for new `docs/TODO.md` entries). Never commit or push to `main` directly.
 - Record deferred fixes and known follow-ups in `docs/TODO.md`.
