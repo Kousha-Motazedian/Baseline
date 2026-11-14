@@ -2,7 +2,7 @@
  * Shared test fixtures: hand-built players and teams with exact, predictable ratings, plus helpers
  * for tweaking generated ones. Kept here so every match-engine test builds players the same way.
  */
-import { generateTeam } from '../../src/core/data/teamGenerator.ts'
+import { AVERAGE_TEAM_CA, generateTeam } from '../../src/core/data/teamGenerator.ts'
 import type { MatchTeam } from '../../src/core/match/types.ts'
 import type {
   HiddenAttributes,
@@ -66,7 +66,7 @@ export function makePlayer(options: TestPlayerOptions): Player {
   }
 }
 
-/** Typical lineup heights in slot order G, G, W, W, B (matches the generator's archetypes). */
+/** Typical lineup heights in slot order PG, SG, SF, PF, C (roughly the generator's body types). */
 export const SLOT_HEIGHTS: readonly number[] = [191, 191, 201, 201, 210, 191, 191, 201, 210, 210]
 
 /** Builds a team of hand-made players that all share one flat rating. */
@@ -77,10 +77,17 @@ export function makeFlatTeam(id: string, rating: number, size = 10): MatchTeam {
   return { id, name: `Team ${id}`, roster }
 }
 
-/** Two freshly generated average teams from one seed (ids "home" and "away"). */
+/**
+ * Two freshly generated uniform average teams from one seed (ids "home" and "away"). Average
+ * teams (no stars) keep engine tests about one attribute's effect free of star-player noise.
+ */
 export function generatedPair(seed: number): [MatchTeam, MatchTeam] {
   const rng = createRng(seed)
-  return [generateTeam(rng, { id: 'home' }), generateTeam(rng, { id: 'away' })]
+  const options = { averageCa: AVERAGE_TEAM_CA }
+  return [
+    generateTeam(rng, { id: 'home', ...options }),
+    generateTeam(rng, { id: 'away', ...options }),
+  ]
 }
 
 /** A copy of a player with some attributes replaced. The original is left untouched. */

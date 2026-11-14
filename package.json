@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "sim:game": "node tools/sim-game.ts",
     "sim:batch": "node tools/batch-sim.ts",
+    "inspect:league": "node tools/inspect-league.ts",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "repository": {

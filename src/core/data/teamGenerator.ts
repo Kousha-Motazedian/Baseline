@@ -1,54 +1,119 @@
 import type { MatchTeam } from '../match/types.ts'
-import { AVERAGE_RATING } from '../shared/probability.ts'
+import type { Position } from '../players/positions.ts'
+import { POSITIONS } from '../players/positions.ts'
+import { randomNormal } from '../shared/normal.ts'
+import { clamp } from '../shared/probability.ts'
 import type { Rng } from '../shared/rng.ts'
+import type { LeagueRules } from '../world/rules.ts'
+import { PRO_RULES } from '../world/rules.ts'
+import {
+  dealRosters,
+  drawLeagueAbilities,
+  REFERENCE_TEAMS,
+  shuffledIndices,
+} from './leagueTalent.ts'
 import { TEAM_NAMES } from './names.ts'
-import type { Archetype } from './playerGenerator.ts'
 import { generatePlayer } from './playerGenerator.ts'
+
+/**
+ * Team generation. A league team is dealt a realistic spread of Current Ability (one of the league's
+ * 30 best players, one of the next 30, and so on; see leagueTalent.ts) and three players per
+ * position (with 15-man rosters). The roster is ordered so the match engine's slot-for-slot matchups work: the five
+ * starters come first in PG, SG, SF, PF, C order, then the bench in the same order.
+ */
 
 /** What the caller controls when generating a team. */
 export interface TeamGenerationOptions {
   id: string
   /** Team name; a random fictional one is picked if omitted. */
   name?: string
-  /** Mean visible rating of the starters (10.5 = league average). */
-  quality?: number
+  /**
+   * Build a uniform "average" team instead of a realistic league team: every starter is built to
+   * about this CA and the bench a little lower, with no stars. Used where a test needs evenly
+   * matched teams of a known quality (see AVERAGE_TEAM_CA).
+   */
+  averageCa?: number
+  /** League rules; only the roster size is used. Defaults to PRO_RULES (15 players). */
+  rules?: LeagueRules
+}
+
+/** One roster spot to fill: the position and the CA the player is built to. */
+interface RosterSpot {
+  position: Position
+  targetCa: number
 }
 
 /**
- * Roster archetypes in order. The first five are the starters in lineup-slot order
- * G, G, W, W, B, so that the match engine's slot-for-slot matchups pit guards against guards,
- * wings against wings and bigs against bigs. The bench mirrors that shape with an extra big.
+ * CA of an average team's starters. Chosen so their mean visible rating sits near the match
+ * engine's 10.5 reference, matching the old generator's average team (quality 10.5); see
+ * player-roles.md "Calibration results".
  */
-export const ROSTER_ARCHETYPES: readonly Archetype[] = [
-  'guard',
-  'guard',
-  'wing',
-  'wing',
-  'big',
-  'guard',
-  'guard',
-  'wing',
-  'big',
-  'big',
-]
+export const AVERAGE_TEAM_CA = 67
+/** How much weaker an average team's bench is than its starters, in CA. */
+const AVERAGE_BENCH_CA_DROP = 12
+/** Spread of each player's CA around an average team's level (some are simply better). */
+const AVERAGE_TEAM_CA_SD = 7
 
-/** How much weaker bench players are than starters, in mean rating points. */
-const BENCH_QUALITY_DROP = 1.5
+/** Players per position group: the starters, then each bench unit. */
+const UNIT = POSITIONS.length
 
-/** Number of starters at the front of the roster. */
-const STARTERS = 5
+/** A random permutation of the five positions. */
+function shuffledPositions(rng: Rng): Position[] {
+  return shuffledIndices(rng, UNIT).map((i) => POSITIONS[i] as Position)
+}
 
-/** Generates a 10-player team: five starters (G, G, W, W, B) and a slightly weaker bench. */
-export function generateTeam(rng: Rng, options: TeamGenerationOptions): MatchTeam {
-  const quality = options.quality ?? AVERAGE_RATING
-  const roster = ROSTER_ARCHETYPES.map((archetype, index) =>
-    generatePlayer(rng, {
-      id: `${options.id}-p${index + 1}`,
-      archetype,
-      quality: index < STARTERS ? quality : quality - BENCH_QUALITY_DROP,
-    }),
+/**
+ * Roster spots for a best-first list of CAs. Each unit of five (starters, first bench unit, second
+ * bench unit) gets one player per position, with positions shuffled within the unit so a team's
+ * star can play anywhere. Each unit is then put in PG–C order for the engine's lineup slots.
+ */
+function leagueRosterSpots(rng: Rng, abilities: readonly number[]): RosterSpot[] {
+  const spots: RosterSpot[] = []
+  for (let start = 0; start < abilities.length; start += UNIT) {
+    const unit = abilities.slice(start, start + UNIT)
+    const positions = shuffledPositions(rng)
+    const unitSpots = unit.map((targetCa, k) => ({ position: positions[k] as Position, targetCa }))
+    unitSpots.sort((a, b) => POSITIONS.indexOf(a.position) - POSITIONS.indexOf(b.position))
+    spots.push(...unitSpots)
+  }
+  return spots
+}
+
+/** Roster spots for a uniform average team: starters near `averageCa`, bench a little lower. */
+function averageRosterSpots(rng: Rng, averageCa: number, rosterSize: number): RosterSpot[] {
+  return Array.from({ length: rosterSize }, (_, i) => {
+    const level = i < UNIT ? averageCa : averageCa - AVERAGE_BENCH_CA_DROP
+    const targetCa = Math.round(clamp(randomNormal(rng, level, AVERAGE_TEAM_CA_SD), 1, 100))
+    return { position: POSITIONS[i % UNIT] as Position, targetCa }
+  })
+}
+
+/** Builds a team from its roster spots. */
+function buildTeam(rng: Rng, id: string, name: string, spots: readonly RosterSpot[]): MatchTeam {
+  const roster = spots.map((spot, index) =>
+    generatePlayer(rng, { id: `${id}-p${index + 1}`, ...spot }),
   )
-  return { id: options.id, name: options.name ?? rng.pick(TEAM_NAMES), roster }
+  return { id, name, roster }
+}
+
+/** Best-first CA lists for `count` league teams (a full reference league is dealt, then cut). */
+function leagueRosters(rng: Rng, count: number, rosterSize: number): number[][] {
+  const poolTeams = Math.max(count, REFERENCE_TEAMS)
+  const abilities = drawLeagueAbilities(rng, poolTeams, rosterSize)
+  return dealRosters(rng, abilities, poolTeams).slice(0, count)
+}
+
+/**
+ * Generates one team. By default it is a realistic league team (a random team from a freshly
+ * drawn league); with `averageCa` it is a uniform average team.
+ */
+export function generateTeam(rng: Rng, options: TeamGenerationOptions): MatchTeam {
+  const rosterSize = (options.rules ?? PRO_RULES).rosterSize
+  const spots =
+    options.averageCa === undefined
+      ? leagueRosterSpots(rng, leagueRosters(rng, 1, rosterSize)[0] as number[])
+      : averageRosterSpots(rng, options.averageCa, rosterSize)
+  return buildTeam(rng, options.id, options.name ?? rng.pick(TEAM_NAMES), spots)
 }
 
 /** Picks `count` different team names from the built-in pool (a partial Fisher–Yates shuffle). */
@@ -63,9 +128,30 @@ export function pickTeamNames(rng: Rng, count: number): string[] {
   return pool.slice(0, count)
 }
 
-/** Generates several teams of the same quality with distinct names (ids "T1", "T2", ...). */
-export function generateTeams(rng: Rng, count: number, quality?: number): MatchTeam[] {
-  return pickTeamNames(rng, count).map((name, i) =>
-    generateTeam(rng, { id: `T${i + 1}`, name, quality }),
+/**
+ * Distinct names for a league's teams: random names from the built-in pool, then numbered
+ * placeholders ("Team 31", ...) once the pool runs out, so any league size can be generated.
+ */
+export function leagueTeamNames(rng: Rng, count: number): string[] {
+  const named = pickTeamNames(rng, Math.min(count, TEAM_NAMES.length))
+  const numbered = Array.from({ length: count - named.length }, (_, i) => {
+    return `Team ${named.length + i + 1}`
+  })
+  return [...named, ...numbered]
+}
+
+/**
+ * Generates the teams of one league with distinct names (ids "T1", "T2", ...). They share one
+ * talent pool, so a 30-team league has the doc's tier distribution (e.g. at most 2 GOATs).
+ */
+export function generateLeague(
+  rng: Rng,
+  count: number,
+  rules: LeagueRules = PRO_RULES,
+): MatchTeam[] {
+  const names = leagueTeamNames(rng, count)
+  const rosters = leagueRosters(rng, count, rules.rosterSize)
+  return names.map((name, i) =>
+    buildTeam(rng, `T${i + 1}`, name, leagueRosterSpots(rng, rosters[i] as number[])),
   )
 }

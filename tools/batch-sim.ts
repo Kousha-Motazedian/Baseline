@@ -1,15 +1,16 @@
 /**
  * Batch simulator for calibration and balance checks.
  *
- *   npm run sim:batch                      2,000 games between generated average teams
+ *   npm run sim:batch                      2,000 games between generated league teams
  *   npm run sim:batch -- --games 5000      more games (tighter averages)
  *   npm run sim:batch -- --seed 42         different random league
  *   npm run sim:batch -- --balance         also run the offense-vs-defense balance tests
+ *   npm run sim:batch -- --average         uniform average teams (no stars) instead of league teams
  *
  * Besides the league games, it plays the same number of games between identical teams (a team
  * against a copy of itself) to measure randomness: final-margin spread, overtime rate, home edge.
  */
-import { generateTeam } from '../src/core/data/teamGenerator.ts'
+import { AVERAGE_TEAM_CA, generateTeam } from '../src/core/data/teamGenerator.ts'
 import { simulateGame } from '../src/core/match/game.ts'
 import type { MatchResult, MatchTeam, PlayType, TeamResult } from '../src/core/match/types.ts'
 import { PLAY_TYPES } from '../src/core/match/types.ts'
@@ -19,6 +20,7 @@ import {
   OFFENSIVE_ATTRIBUTE_KEYS,
   VISIBLE_ATTRIBUTE_KEYS,
 } from '../src/core/players/attributes.ts'
+import type { Rng } from '../src/core/shared/rng.ts'
 import { createRng } from '../src/core/shared/rng.ts'
 import { PRO_RULES } from '../src/core/world/rules.ts'
 
@@ -50,6 +52,11 @@ interface Totals {
   under70: number
   fastBreakPoints: number
   pointsOffTurnovers: number
+  /** Sum over team-games of the team's top scorer's points. */
+  topScorerPoints: number
+  /** Games in which some player scored 40+ (and 50+). */
+  games40: number
+  games50: number
   playTypeAttempts: Record<PlayType, number>
   playTypeMakes: Record<PlayType, number>
 }
@@ -84,6 +91,9 @@ function emptyTotals(): Totals {
     under70: 0,
     fastBreakPoints: 0,
     pointsOffTurnovers: 0,
+    topScorerPoints: 0,
+    games40: 0,
+    games50: 0,
     playTypeAttempts: zeroByPlay(),
     playTypeMakes: zeroByPlay(),
   }
@@ -137,6 +147,20 @@ function gameMinutes(result: MatchResult): number {
   return (PRO_RULES.periods * PRO_RULES.periodSeconds + overtimes * PRO_RULES.overtimeSeconds) / 60
 }
 
+/** Points of a team's top scorer in one game. */
+function topScore(team: TeamResult): number {
+  return Math.max(0, ...team.players.map((line) => line.points))
+}
+
+/** Adds the individual-scoring watch numbers (top scorers, 40+ and 50+ games) for one game. */
+function addTopScorers(totals: Totals, result: MatchResult): void {
+  const home = topScore(result.home)
+  const away = topScore(result.away)
+  totals.topScorerPoints += home + away
+  if (Math.max(home, away) >= 40) totals.games40 += 1
+  if (Math.max(home, away) >= 50) totals.games50 += 1
+}
+
 /** Adds both teams of a finished game to the totals. */
 function addGame(totals: Totals, result: MatchResult): void {
   const minutes = gameMinutes(result)
@@ -144,6 +168,7 @@ function addGame(totals: Totals, result: MatchResult): void {
   if (result.periodsPlayed > PRO_RULES.periods) totals.overtimeGames += 1
   addTeamGame(totals, result.home, result.away, minutes)
   addTeamGame(totals, result.away, result.home, minutes)
+  addTopScorers(totals, result)
 }
 
 /** One league-average stat with its real-world target range (no range = reported only). */
@@ -208,7 +233,8 @@ function metrics(t: Totals): Metric[] {
     },
     {
       // Low scores should come from team quality and tactics, never from propping up bad teams:
-      // this league is evenly matched average teams, so they should be rare here.
+      // the calibration teams are evenly matched (league teams are dealt from one talent pool), so
+      // they should be rare here.
       label: 'Team-games under 70 pts',
       value: t.under70 / t.teamGames,
       min: 0,
@@ -234,6 +260,11 @@ function metrics(t: Totals): Metric[] {
       max: 0.07,
       digits: 3,
     },
+    // Individual box-score watch (report only until rotations exist; see docs/TODO.md). Real
+    // modern pro league: team top scorer ≈ 27–28 pts, a 40+ scorer in ≈ 10–16% of games.
+    { label: 'Team top scorer (pts)', value: t.topScorerPoints / t.teamGames, digits: 1 },
+    { label: 'Games with a 40+ scorer', value: t.games40 / t.games, digits: 3 },
+    { label: 'Games with a 50+ scorer', value: t.games50 / t.games, digits: 3 },
   ]
 }
 
@@ -269,10 +300,24 @@ function printMetrics(title: string, list: readonly Metric[]): void {
   for (const m of list) console.log(metricRow(m))
 }
 
-/** Generates the two average teams for game `index` of a league seeded with `seed`. */
-function averageTeams(seed: number, index: number): [MatchTeam, MatchTeam] {
+/**
+ * Uniform average teams (`--average`) instead of realistic league teams. Set once in main().
+ * League teams are the default: they have the stars and depth a real league has. Average teams
+ * reproduce the old generator's evenly matched, star-free teams for A/B comparisons.
+ */
+let useAverageTeams = false
+
+/** Generates one team for the calibration games: a league team, or an average team with --average. */
+function calibrationTeam(rng: Rng, id: string): MatchTeam {
+  return useAverageTeams
+    ? generateTeam(rng, { id, averageCa: AVERAGE_TEAM_CA })
+    : generateTeam(rng, { id })
+}
+
+/** Generates the two teams for game `index` of a league seeded with `seed`. */
+function calibrationPair(seed: number, index: number): [MatchTeam, MatchTeam] {
   const rng = createRng(seed * 100_003 + index)
-  return [generateTeam(rng, { id: 'A' }), generateTeam(rng, { id: 'B' })]
+  return [calibrationTeam(rng, 'A'), calibrationTeam(rng, 'B')]
 }
 
 /**
@@ -304,11 +349,11 @@ function play(team: MatchTeam, opponent: MatchTeam, index: number, seed: number)
   })
 }
 
-/** Simulates the calibration league: `games` games between freshly generated average teams. */
+/** Simulates the calibration league: `games` games between freshly generated teams. */
 function runLeague(games: number, seed: number): Totals {
   const totals = emptyTotals()
   for (let i = 0; i < games; i++) {
-    const [a, b] = averageTeams(seed, i)
+    const [a, b] = calibrationPair(seed, i)
     addGame(totals, play(a, b, i, seed))
   }
   return totals
@@ -336,7 +381,7 @@ function runIdentical(games: number, seed: number): Metric[] {
   let overtimes = 0
   let homeWins = 0
   for (let i = 0; i < games; i++) {
-    const [team] = averageTeams(seed + 500, i)
+    const [team] = calibrationPair(seed + 500, i)
     const result = play(copyTeam(team, 'A'), copyTeam(team, 'B'), i, seed)
     margins.push(result.home.points - result.away.points)
     if (result.periodsPlayed > PRO_RULES.periods) overtimes++
@@ -393,7 +438,7 @@ function emptyNet(): NetTally {
 }
 
 /**
- * Balance tests. Each generated average team A is played against average team B four ways,
+ * Balance tests. Each generated team A is played against generated team B four ways,
  * with the same game seed (paired comparison, which cancels most of the random noise):
  *   base:       A vs B
  *   offense+3:  A with +3 on every offensive attribute vs B
@@ -407,7 +452,7 @@ function runBalance(games: number, seed: number): void {
   const leagueBase = emptyNet()
   const leagueBoosted = emptyNet()
   for (let i = 0; i < games; i++) {
-    const [a, b] = averageTeams(seed, i)
+    const [a, b] = calibrationPair(seed, i)
     const baseResult = play(a, b, i, seed)
     addNet(base, baseResult)
     addNet(leagueBase, baseResult)
@@ -466,6 +511,7 @@ function numberArg(name: string, fallback: number): number {
 function main(): void {
   const games = numberArg('games', 2000)
   const seed = numberArg('seed', 1)
+  useAverageTeams = process.argv.includes('--average')
   const started = Date.now()
   printReport(runLeague(games, seed))
   printMetrics(

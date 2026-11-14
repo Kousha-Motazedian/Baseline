@@ -147,7 +147,8 @@ function foulingPair(seed: number): [MatchTeam, MatchTeam] {
 describe('bonus free throws in simulated games', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
   it('pro: the 5th foul of a quarter shoots, the 2nd inside the last 2:00 shoots', () => {
     const [home, away] = foulingPair(31)
-    const cov = replaySeries(home, away, 40, PRO_RULES)
+    // 60 games: the late-window-only bonus is rare, so give its count a comfortable margin.
+    const cov = replaySeries(home, away, 60, PRO_RULES)
     expect(cov.penalized).toBeGreaterThan(100)
     expect(cov.checked - cov.penalized).toBeGreaterThan(100)
     expect(cov.lateWindowOnly).toBeGreaterThan(5)

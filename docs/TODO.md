@@ -57,3 +57,80 @@ Deferred fixes from code reviews. Tick an item off (or delete it) when it lands;
 - [ ] Add a golden-master engine test: pin a hash or final scores of 2–3 fixed-seed games, updated deliberately on engine changes. The determinism tests only compare a run with itself. (`tests/core/match/`)
 - [ ] Technical free throws during a fast-break or post-turnover possession are counted in fast-break points and points off turnovers; exclude them. (`src/core/match/possession.ts:383`, `src/core/match/possession.ts:391`)
 - [ ] **Recheck with rotations/fatigue/tactics:** individual box-score lines are far too extreme even though league averages are calibrated (1,000 average-team pro games: 41% of games have a 40+ scorer vs. ~10–16% real; 50+ games 0.068/game vs. ~0.015–0.02; team top scorer averages 33.9 pts vs. ~27–28; single-game maxima 90 pts / 32 reb / 28 ast). Causes: starters play ~38 min with no rotation, usage concentration, generator spread. Deferred because rotations/fatigue should largely fix it; when they land, add player-level targets to batch-sim (top-scorer average, 40+/50+ rates, rebound and assist leaders) and tune `USAGE_EXPONENT`, pick weights or generator spread if still off. (`src/core/match/tuning.ts:59`, `src/core/match/playSelection.ts`, `src/core/data/playerGenerator.ts`, `tools/batch-sim.ts`)
+
+## Players: roles, positions and CA
+
+- [ ] **CA 90+ players can end up with one role** (~0.3%, e.g. SG-only CA 91–97 with Lockdown Defender first), breaking the rule "CA 90+ always has 2 roles". `contradicts()` uses `leadingSkill()`, which arbitrarily returns `driving` for equal-weight broad templates, so Lockdown Defender's `weakAt` blocks All-Around and every scoring role. Fix: never treat broad templates (All-Around, Two-Way Forward) as contradicted via `leadingSkill`, and for CA 90+ fall back to the best non-identical role. Then change the `roles.test.ts` test "gives a GOAT one role when no distinct second role exists" and add a regression test (`areDistinctRoles('Lockdown Defender', 'All-Around')` is true; every CA 90+ player in 400 leagues holds 2 roles). The `leagueTalent.test.ts` 90+ check passes only by seed. (`src/core/players/roles.ts`, `docs/design/player-roles.md`)
+- [ ] The balance section of `sim:batch` is noisier with star-heavy league teams: fresh seed 5151 gives an offense:defense ratio of 1.28 (target 1.30–1.50; 1.40 on the old generator, 1.42 with `--average`). Not an engine regression. Run the balance pairs on average teams or with more games. (`tools/batch-sim.ts`)
+- [ ] CA jumps at a hard height limit when a new position becomes eligible (e.g. an extreme inside player goes from CA 74 at 200 cm to 85 at 201 cm, once C is allowed). CA is continuous in attributes and height is fixed, so this only matters for the editor or any future height change. (`src/core/players/currentAbility.ts`)
+- [ ] A few marginal role labels: a 197 cm PG/SG/SF "Point Forward" with Passing and Ball Handling at exactly 10; a PG "Lockdown Defender" whose Passing (15) beats his Perimeter Defense (11); a PF/C "Playmaking Big" at Passing exactly 10. Rare; revisit if users notice. (`src/core/players/roles.ts`)
+- [ ] Comment formatting in `currentAbility.ts`: line 86 runs to 135 characters, and the `currentAbility` JSDoc breaks awkwardly after "on" / "1–100.". (`src/core/players/currentAbility.ts`)
+- [ ] Positions played can list an outer position while skipping a bridged middle one that rates lower (e.g. PG 8.5 / SG 7.2 / SF 7.5 gives PG/SF, since SF ranks ahead of SG and SG passes the 1.5 skip margin). It follows the approved rule and only reads oddly on weak bench players. (`src/core/players/positions.ts`)
+- [ ] At 206 cm every position is height-eligible, so a few low-CA players with near-equal ratings list PG and C together (PG/PF/C, SG/C, SG/SF/C: ~0.04 per league). Follows from the height limits; revisit if it shows up in play. (`src/core/players/positions.ts`)
+- [ ] FIBA 12-man rosters split into units of 5/5/2, so each team's last two bench spots get random positions. Fine for now; revisit with roster building and the draft. (`leagueRosterSpots` in `src/core/data/teamGenerator.ts`)
+
+## Performance (future)
+
+Not needed yet. Do these only when simulation speed becomes a real problem (e.g. simming a full season with every league is too slow). If they are not enough, see the Rust port under Future features.
+
+- [ ] Run each sim day's games in parallel across worker threads (games are independent; ~6–8× on an 8-core machine, no rewrite).
+- [ ] Profile the engine and fix hot spots in TypeScript (e.g. per-possession object allocation).
+
+## Baseline 1.0 scope
+
+Barebones but playable: the core loop is build a roster → set lineups → sim games → season and playoffs → draft and sign → next season. Anything not listed here is a future feature (below).
+
+- **League:** one pro league, schedule, standings, playoffs.
+- **Players and teams:** generated players and teams, roles and positions, simple development and aging, retirements and replacement players generated each season.
+- **On court:** match engine, text match viewer, box scores and season stats.
+- **Coaching:** rotations and fatigue, basic tactics, and **hireable head coaches**. Every team has a head coach with attributes and their own playing style and system; you can hire and fire your team's head coach. Coaches have salaried contracts under a per-team coach cap until full staff finances arrive (see `docs/design/coaches.md`). The coach's system is the team's default tactics; you can override it (details in the coach design doc).
+- **Your role:** you are the GM. Overriding tactics is a GM perk, not a separate coaching job; coach-only careers come in 2.0 and the dual GM + coach role in 3.0.
+- **Scouting:** fog of war (attributes shown as ranges, narrowing with scouting), scouts and assignments, draft scouting. Scouts and head coaches are the only staff in 1.0.
+- **Injuries:** in-game and practice injuries with "out X games" recovery times and injury proneness; no medical staff effects yet.
+- **Roster moves:** salary cap and contracts (re-signing, simple free agency), a basic draft, basic trades with AI accept/reject.
+- **AI GMs:** the other teams draft, sign, re-sign and trade on their own so the league stays alive season to season. (`src/core/ai/`)
+- **Inbox:** messages for injuries, contract demands, trade offers, scouting reports and draft reminders. 2.0's news and media build on it. (`src/core/news/`, `src/renderer/`)
+- **Sim controls:** sim to the next game, week, trade deadline or playoffs, stopping for important events. (`src/core/calendar/`)
+- **Stats pages:** league leaders, and season and career stats for each player.
+- **Tutorial:** a simple guided start for new players.
+- **Infrastructure:** save/load and the essential screens.
+
+## Future features
+
+Planned features beyond the current work, tagged by release.
+
+- [ ] **2D match view (Baseline 2.0):** a top-down court with player tokens animated from the play-by-play events, plus shot charts. The viewer acts out events; the engine stays abstract (no per-player court coordinates) so simulation speed is unaffected. (`src/renderer/`)
+- [ ] **Owner goals (Baseline 2.0, financial goals in 3.0):** owners with personalities set season and long-term objectives and review the user's progress against them, tied to job security and patience. In 2.0 the goals are based only on team performance (e.g. make the playoffs, win a round, develop young players, win now). Financial goals (cut payroll, turn a profit, budgets) arrive in 3.0 with full team finances. (`src/core/career/`, `src/core/finances/`)
+- [ ] **Staff (Baseline 2.0):** hiring assistant coaches, trainers, medical and analytics staff (scouts and head coaches are already in 1.0), with effects on development, injuries and tactics. (`src/core/staff/`)
+- [ ] **Detailed injuries (Baseline 2.0):** injury types and body parts, recovery timelines with setbacks, playing through injury, and medical staff effects on prevention and recovery. 1.0 has simple out-X-games injuries. (`src/core/players/`)
+- [ ] **Player morale and personality (Baseline 2.0):** playing-time and role expectations, complaints and trade requests, locker-room chemistry, using the hidden personality attributes. (`src/core/players/`)
+- [ ] **Training (Baseline 2.0):** team practice focus and individual development plans. (`src/core/tactics/`, `src/core/players/`)
+- [ ] **Advanced contract rules (Baseline 2.0):** cap exceptions, luxury tax, waivers, two-way deals, rookie-scale details. (`src/core/contracts/`)
+- [ ] **Advanced trades (Baseline 2.0):** pick protections, multi-team trades, trade-deadline AI behaviour. (`src/core/contracts/`, `src/core/ai/`, `src/core/draft/`)
+- [ ] **Draft extras (Baseline 2.0):** lottery with odds, combine measurements, workouts. (`src/core/draft/`)
+- [ ] **News and media (Baseline 2.0):** news feed, press conferences, media pressure. (`src/core/news/`)
+- [ ] **Awards, records and history (Baseline 2.0):** MVP and other awards, all-league teams, record books, Hall of Fame. (`src/core/news/`)
+- [ ] **Career depth (Baseline 2.0):** a coach-only career option (you run games, rotations, tactics and training while an AI GM handles roster moves), getting fired, the job market, reputation. Pairs with owner goals. (`src/core/career/`)
+- [ ] **Development league (Baseline 2.0):** a minor-league affiliate for stashing and developing players. (`src/core/world/`)
+- [ ] **All-Star weekend (Baseline 2.0).** (`src/core/world/`)
+- [ ] **Live match decisions (Baseline 2.0):** while watching the text match viewer, call timeouts, make substitutions and change tactics in real time. (`src/core/match/`, `src/core/tactics/`, `src/renderer/`)
+- [ ] **Agents and contract negotiation (Baseline 2.0):** player agents with personalities, counteroffers and holdouts. (`src/core/contracts/`)
+- [ ] **Basic stats and analytics (Baseline 2.0):** on/off ratings, shot charts and lineup data. (`src/core/match/`, `src/renderer/`)
+- [ ] **Retired players become coaches and scouts (Baseline 2.0):** former players enter the staff pool. (`src/core/staff/`)
+- [ ] **Rivalries (Baseline 2.0):** history-driven rivalries that affect the Big Games attribute, crowd effects and owner expectations. (`src/core/world/`)
+- [ ] **Rust engine (Baseline 2.0 or 3.0):** port the match engine core (`src/core/match/`) to Rust compiled to WebAssembly (or a napi-rs native addon), expected ~3–10× faster than TypeScript. Must stay bit-for-bit deterministic: port the mulberry32 RNG and floating-point math exactly, and verify by running both engines on the same seeds and comparing results game by game (e.g. a results hash, like the final review's 600-game check) so saved replays don't change.
+- [ ] **Full team finances (Baseline 3.0):** revenue (tickets, TV, merchandise, sponsorship, playoff gates), expenses (salaries, staff, facilities, travel), budgets and profit/loss, ticket pricing, and facility upgrades. Baseline 1.0 and 2.0 model only the salary cap and payroll rules. Firing a coach early becomes costly here: his remaining salary keeps counting against the team's budget until his contract ends (in 1.0/2.0 firing is free under the coach cap). Adds financial owner goals (see Owner goals). (`src/core/finances/`)
+- [ ] **European leagues (Baseline 3.0):** playable European domestic leagues and a continental club competition alongside the pro league. Builds on the existing FIBA rule set (`FIBA_RULES`) and needs the systems a European setup implies: promotion/relegation, import-player limits, club-specific finances, and scheduling domestic and continental games together. (`src/core/world/`, `src/core/contracts/`, `src/core/finances/`)
+- [ ] **International best-on-best tournaments (Baseline 3.0):** national-team competitions in the style of a world cup and an Olympic tournament. Needs national-team selection (uses the `nationality` measurable), national-team GM and head coach jobs that a career can hold at the same time as a club job (as a club head coach can also coach a national team), national-team call-ups, qualifying windows and tournament calendars that fit around club seasons, and FIBA rules for the games. (`src/core/world/`, `src/core/career/`, `src/core/calendar/`)
+- [ ] **Editor and import/export (Baseline 3.0):** edit players and teams; import and export databases (e.g. community-made real-player files). (`src/core/data/`)
+- [ ] **Sandbox / commissioner mode (Baseline 3.0):** edit anything and change league rules mid-save. (`src/core/career/`)
+- [ ] **Fantasy draft and custom league setup (Baseline 3.0).** (`src/core/world/`, `src/core/draft/`)
+- [ ] **College basketball (Baseline 3.0):** college teams and seasons as the prospect pipeline. (`src/core/world/`, `src/core/draft/`)
+- [ ] **Expansion and relocation (Baseline 3.0):** league expansion with expansion drafts (protected lists, picks from existing rosters) and franchise relocation (new city, name and market, with effects on finances and fan base). (`src/core/world/`, `src/core/draft/`, `src/core/finances/`)
+- [ ] **Dual GM and head coach role (Baseline 3.0):** a career can hold both jobs at once, running roster moves and coaching together, with its own expectations from the owner. 1.0 has the GM role and 2.0 adds the coach-only role (see Career depth). (`src/core/career/`)
+- [ ] **Advanced analytics (Baseline 3.0):** advanced metrics such as PER and win shares, building on 2.0's basic analytics. (`src/core/match/`, `src/renderer/`)
+- [ ] **Localization (Baseline 3.0):** the game in other languages. (`src/renderer/`)
+- [ ] **Steam Workshop / modding support (Baseline 3.0):** building on the editor and import/export. (`src/core/data/`)
+- [ ] **League evolution (Baseline 4.0):** play style changes over decades (e.g. more threes) and league rule-change votes, so long saves don't feel frozen in time. (`src/core/world/`)
+- [ ] **Women's league (Baseline 4.0):** a separate playable women's league. (`src/core/world/`, `src/core/data/`)
+- Not planned: a 3D match view; online multiplayer leagues.
