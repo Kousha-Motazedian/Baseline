@@ -109,18 +109,18 @@ Never shown directly. Scouting reveals estimates or ranges; some (like Consisten
 
 Both share one 1–100 scale, so they read against each other: **CA 52 / PA 80** is a rotation player today with superstar upside.
 
-| Rating | Tier                                                       |
-| ------ | ---------------------------------------------------------- |
-| 100    | GOAT — practically unreachable (≈ once per century of sim) |
-| 90+    | Generational                                               |
-| 80+    | Superstar                                                  |
-| 70+    | All-Star                                                   |
-| 60+    | Quality starter                                            |
-| 50+    | Rotation player                                            |
-| 40+    | End of bench / fringe top-league player                    |
-| 30+    | Development league / overseas pro                          |
-| 20+    | College / amateur                                          |
-| < 20   | Youth prospect                                             |
+| Rating | Tier                                                         |
+| ------ | ------------------------------------------------------------ |
+| 100    | GOAT — about one every 20–30 seasons; most seasons have none |
+| 90+    | Generational                                                 |
+| 80+    | Superstar                                                    |
+| 70+    | All-Star                                                     |
+| 60+    | Quality starter                                              |
+| 50+    | Rotation player                                              |
+| 40+    | End of bench / fringe top-league player                      |
+| 30+    | Development league / overseas pro                            |
+| 20+    | College / amateur                                            |
+| < 20   | Youth prospect                                               |
 
 **How CA connects to attributes:** CA is the points budget the visible attributes must fit within. Each attribute's cost is weighted by how much it matters for the player's position/role, so an elite center can't also be an elite ball-handler for free. When CA rises, attributes rise to match, so a CA 70 player genuinely plays like an All-Star.
 
@@ -139,4 +139,4 @@ For now, how often a player shoots threes, drives, or posts up is **derived from
 
 ## Positions
 
-Positions are **not stored**. The game computes a 1–5 positional rating from attributes and measurables, and from that a role label (e.g. "Stretch Big", "3-and-D Wing"). Revisit when tactics are implemented.
+Positions are **not stored**. The game computes a 1–20 rating for each of the five positions (PG, SG, SF, PF, C) from attributes and measurables, and from that a role label (e.g. "Stretch Big", "3-and-D Wing"). See [player-roles.md](player-roles.md).

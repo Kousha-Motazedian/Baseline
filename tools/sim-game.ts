@@ -5,7 +5,7 @@
  *   npm run sim:game            random seed
  *   npm run sim:game -- 1234    reproducible game from seed 1234
  */
-import { generateTeams } from '../src/core/data/teamGenerator.ts'
+import { generateLeague } from '../src/core/data/teamGenerator.ts'
 import { simulateGame } from '../src/core/match/game.ts'
 import type {
   MatchResult,
@@ -126,7 +126,7 @@ function main(): void {
   if (!Number.isFinite(seed)) throw new Error(`Seed must be a number, got "${arg}"`)
 
   const rng = createRng(seed)
-  const [away, home] = generateTeams(rng, 2) as [MatchTeam, MatchTeam]
+  const [away, home] = generateLeague(rng, 2) as [MatchTeam, MatchTeam]
   const result = simulateGame({ home, away, rules: PRO_RULES, seed })
 
   console.log(`Seed ${seed}: ${away.name} at ${home.name}`)

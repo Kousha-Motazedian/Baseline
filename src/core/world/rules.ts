@@ -77,6 +77,8 @@ export interface LeagueRules {
   noBenchDisqualification: NoBenchDisqualificationRule
   /** Who starts each period with the ball after the opening tip. */
   periodStartRule: PeriodStartRule
+  /** Players on each team's roster (the generator builds rosters of this size). */
+  rosterSize: number
 }
 
 /** North American pro rules: 4 x 12-minute quarters, foul out on 6. */
@@ -107,6 +109,8 @@ export const PRO_RULES: LeagueRules = {
   offensiveFoulsCountAsTeamFouls: false,
   noBenchDisqualification: 'staysOn',
   periodStartRule: 'quarterRotation',
+  // 15 standard contracts per team: 30 teams give the design docs' ~450-player league.
+  rosterSize: 15,
 }
 
 /** FIBA/international rules: 4 x 10-minute quarters, foul out on 5. */
@@ -138,4 +142,6 @@ export const FIBA_RULES: LeagueRules = {
   // FIBA Art. 12.5: every period after the first, overtimes included, starts with an
   // alternating-possession throw-in; the arrow first points to the team that lost the opening tip.
   periodStartRule: 'alternatingArrow',
+  // FIBA game rosters list 12 players.
+  rosterSize: 12,
 }

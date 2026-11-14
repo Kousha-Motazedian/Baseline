@@ -142,8 +142,9 @@ describe('defensive attributes', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
       )
     const weak = rimAttackShare(series(TEAM, rim(4)), 'home')
     const strong = rimAttackShare(series(TEAM, rim(20)), 'home')
-    // Measured .30 → .18.
-    expect(weak - strong).toBeGreaterThan(0.06)
+    // Measured .30 → .18 with the old archetype generator; with position-based average teams
+    // −.06 to −.11 across base-pair seeds 51–55 (−.06 for this pair), 60-game noise ≈ ±.01.
+    expect(weak - strong).toBeGreaterThan(0.04)
   })
 
   it('raising Stealing produces more steals and more opponent turnovers', () => {
@@ -183,7 +184,9 @@ describe('playmaking and rebounding attributes', { timeout: SLOW_TEST_TIMEOUT_MS
   it('raising Passing raises the share of made shots that are assisted', () => {
     const low = rate(series(patchTeam(TEAM, { passing: 5 })), 'home', 'assists', 'fieldGoalsMade')
     const high = rate(series(patchTeam(TEAM, { passing: 18 })), 'home', 'assists', 'fieldGoalsMade')
-    expect(high - low).toBeGreaterThan(0.05)
+    // Measured +.04 to +.06 across base-pair seeds 51–55 with the position-based generator
+    // (+.06 to +.07 with the old archetype one); 60-game noise is about ±.01.
+    expect(high - low).toBeGreaterThan(0.025)
   })
 
   it('raising Offensive Rebounding raises ORB%', () => {

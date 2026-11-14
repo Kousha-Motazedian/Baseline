@@ -5,7 +5,7 @@ import type { MatchTeam } from '../../../src/core/match/types.ts'
 import { createRng } from '../../../src/core/shared/rng.ts'
 import { PRO_RULES } from '../../../src/core/world/rules.ts'
 
-/** Two generated average teams from a seed. */
+/** Two generated league teams (realistic rosters, stars included) from a seed. */
 function teams(seed: number): [MatchTeam, MatchTeam] {
   const rng = createRng(seed)
   return [generateTeam(rng, { id: 'home' }), generateTeam(rng, { id: 'away' })]

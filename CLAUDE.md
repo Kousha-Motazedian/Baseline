@@ -59,6 +59,8 @@ Game design decisions live in `docs/design/`. Read the relevant doc before imple
 
 - `docs/design/player-attributes.md` — attribute list, scales, Current Ability/Potential, hidden attributes
 - `docs/design/match-engine.md` — match engine flow, log-odds edge model, bias fixes, calibration targets and results
+- `docs/design/player-roles.md` — position ratings, roles, Current Ability formula and tier calibration, position-based generation
+- `docs/design/coaches.md` — head coach attributes, playing styles and systems, role fit, override penalty, hiring/firing and the coach cap
 
 ## Code style (applies to the entire codebase, not just the engine)
 
@@ -75,9 +77,14 @@ Game design decisions live in `docs/design/`. Read the relevant doc before imple
 ## Workflow
 
 - Ask before adding a new dependency.
-- Every change uses two subagents, run in order:
-  1. **Developer agent**: implements the change, following this file and the relevant design docs.
-  2. **Tester agent**: writes/updates tests, verifies the change independently (incl. batch-sim/balance checks for engine changes), and reports issues. It does not edit `src/`; fixes go back through the developer agent.
+- Every change uses developer agents and then a tester agent, run in order:
+  1. **Two developer agents**: they implement the change in parallel, following this file and the relevant design docs.
+     - The work is split into two independent parts with clear file ownership.
+     - Each developer works in its own git worktree so they never edit the same files.
+     - When both finish, their work is merged and checked (`npm test`, typecheck, lint) before the tester starts.
+     - If a change can't be split sensibly, one developer does it and the other reviews or takes the next task.
+  2. **Tester agent**: writes/updates tests, verifies the change independently (incl. batch-sim/balance checks for engine changes), and reports issues. It does not edit `src/`; fixes go back through the developer agents.
+- **Progress reporting:** every developer agent messages the main session whenever it finishes a task or starts a new one, saying which task it just finished, which task it's working on now, and what's left. The main session uses these messages for the user's progress updates.
 - **Commits:** always ask the user before committing to a branch, every time, regardless of review results.
 - **Pushing:** only when the user says to push to a branch. At that point (and not before), run a **final review agent on the Fable model**. It:
   1. Looks through all the changed code one last time and reports any issues it finds.
