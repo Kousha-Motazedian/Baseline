@@ -233,8 +233,8 @@ function metrics(t: Totals): Metric[] {
     },
     {
       // Low scores should come from team quality and tactics, never from propping up bad teams:
-      // the calibration teams are evenly matched (league teams are dealt from one talent pool), so
-      // they should be rare here.
+      // the calibration teams are evenly matched (every league team gets one player from each
+      // talent round), so they should be rare here.
       label: 'Team-games under 70 pts',
       value: t.under70 / t.teamGames,
       min: 0,

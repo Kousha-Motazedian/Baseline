@@ -60,7 +60,7 @@ const COUNTED_BANDS: readonly TierBand[] = [
  */
 const FRINGE_BAND = { minCa: 40, maxCa: 49, skew: 0.8 }
 
-/** Draws one CA inside a band, skewed towards its bottom (see TierBand.skew). */
+/** Draws one CA inside a band, skewed towards its bottom or top (see TierBand.skew). */
 function drawInBand(rng: Rng, minCa: number, maxCa: number, skew: number): number {
   const span = maxCa - minCa + 1
   return Math.min(maxCa, minCa + Math.floor(rng.next() ** skew * span))

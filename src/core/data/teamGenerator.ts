@@ -1,4 +1,5 @@
 import type { MatchTeam } from '../match/types.ts'
+import { CA_MAX, CA_MIN } from '../players/currentAbility.ts'
 import type { Position } from '../players/positions.ts'
 import { POSITIONS } from '../players/positions.ts'
 import { randomNormal } from '../shared/normal.ts'
@@ -16,10 +17,11 @@ import { TEAM_NAMES } from './names.ts'
 import { generatePlayer } from './playerGenerator.ts'
 
 /**
- * Team generation. A league team is dealt a realistic spread of Current Ability (one of the league's
- * 30 best players, one of the next 30, and so on; see leagueTalent.ts) and three players per
- * position (with 15-man rosters). The roster is ordered so the match engine's slot-for-slot matchups work: the five
- * starters come first in PG, SG, SF, PF, C order, then the bench in the same order.
+ * Team generation. A league team is dealt a realistic spread of Current Ability (one of the
+ * league's 30 best players, one of the next 30, and so on; see leagueTalent.ts) and three players
+ * per position (with 15-man rosters). The roster is ordered so the match engine's slot-for-slot
+ * matchups work: the five starters come first in PG, SG, SF, PF, C order, then the bench in the
+ * same order.
  */
 
 /** What the caller controls when generating a team. */
@@ -83,7 +85,7 @@ function leagueRosterSpots(rng: Rng, abilities: readonly number[]): RosterSpot[]
 function averageRosterSpots(rng: Rng, averageCa: number, rosterSize: number): RosterSpot[] {
   return Array.from({ length: rosterSize }, (_, i) => {
     const level = i < UNIT ? averageCa : averageCa - AVERAGE_BENCH_CA_DROP
-    const targetCa = Math.round(clamp(randomNormal(rng, level, AVERAGE_TEAM_CA_SD), 1, 100))
+    const targetCa = Math.round(clamp(randomNormal(rng, level, AVERAGE_TEAM_CA_SD), CA_MIN, CA_MAX))
     return { position: POSITIONS[i % UNIT] as Position, targetCa }
   })
 }

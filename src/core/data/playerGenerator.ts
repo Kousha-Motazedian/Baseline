@@ -140,7 +140,7 @@ export function fitLevel(
   return high
 }
 
-/** Draws attempts before falling back to clamping (each lands in range ≥ 98% of the time). */
+/** Height draws tried before falling back to clamping (each lands in range ≥ 98% of the time). */
 const HEIGHT_DRAW_ATTEMPTS = 10
 
 /**

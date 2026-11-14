@@ -13,8 +13,8 @@ import {
 /**
  * Current Ability (CA): one 1–100 number for how good a player is today. It is the player's
  * position-weighted ability score at his best position (normally his primary one), mapped onto
- * 1–100. Computed, never
- * rolled (docs/design/player-roles.md, section 3). The match engine never reads it.
+ * 1–100. Computed, never rolled (docs/design/player-roles.md, section 3). The match engine never
+ * reads it.
  */
 
 /**
@@ -83,7 +83,8 @@ export const CA_WEIGHTS: Record<Position, AttributeWeights> = Object.fromEntries
  * Mapping from ability score (1–20 scale) to CA: CA = 50 + (score − SCORE_AT_CA_50) × CA_PER_POINT.
  * Calibrated so the generator's league reaches the doc's tiers with sensible attributes: a
  * league's starters (mean CA ≈ 67) average a visible rating of 10.5, the engine's reference and
- * the old generator's average team, and a GOAT (CA 100) needs nearly maxed position skills. See player-roles.md "Calibration results".
+ * the old generator's average team, and a GOAT (CA 100) needs nearly maxed position skills. See
+ * player-roles.md "Calibration results".
  */
 export const SCORE_AT_CA_50 = 9.45
 export const CA_PER_POINT = 7.5
@@ -132,8 +133,7 @@ export function bodyAdjustedScore(player: PlayerProfile, position: Position): nu
 
 /**
  * A player's Current Ability: his best body-adjusted ability score over the positions his height
- * allows, on
- * 1–100. For almost every player the best position is his primary one.
+ * allows, on 1–100. For almost every player the best position is his primary one.
  *
  * Why the best over positions rather than "the score at the primary position": the primary
  * position can flip when one attribute changes, and taking the score at whichever position wins

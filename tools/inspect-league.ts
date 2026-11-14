@@ -98,6 +98,7 @@ function printPositionsAndRoles(players: readonly PlayerSummary[]): void {
   console.log(
     `\nPrimary positions: ${POSITIONS.map((p) => `${p} ${primaries.get(p) ?? 0}`).join(', ')}`,
   )
+  /** Players listed at exactly `n` positions. */
   const playing = (n: number): number => players.filter((p) => p.played.length === n).length
   const threePlus = players.length - playing(1) - playing(2)
   console.log(`Positions played: 1 = ${playing(1)}, 2 = ${playing(2)}, 3+ = ${threePlus}`)

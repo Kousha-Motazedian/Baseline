@@ -293,10 +293,16 @@ const TYPICAL_WINGSPAN_EXTRA_CM = 7
 /**
  * How close (in rating points) the first extra position must be to the best one to count among
  * "positions played"; each further position needs a smaller gap (see positionsPlayed). Tuned so
- * about half of a generated league is dual-eligible and only ~2% play three positions, as in a
+ * about half of a generated league is dual-eligible and under 3% play three positions, as in a
  * real league.
  */
 export const POSITIONS_PLAYED_MARGIN = 1.2
+
+/**
+ * How far below the best rating a skipped middle position may be (see bridgesGap). Tuned so a
+ * generated league has only a handful of PG/SF players (2.65 per league measured over 20 leagues).
+ */
+export const SKIPPED_POSITION_MARGIN = 1.5
 
 /**
  * Weighted average of `values` over the weighted attributes. Values missing from `values` count as
@@ -434,12 +440,6 @@ function bridgesGap(
   const between = POSITIONS.slice(Math.min(index, nearest) + 1, Math.max(index, nearest))
   return between.every((p) => ratings[p] >= best - SKIPPED_POSITION_MARGIN)
 }
-
-/**
- * How far below the best rating a skipped middle position may be (see bridgesGap). Tuned so a
- * generated league has only a handful of PG/SF players (2.65 per league measured over 20 leagues).
- */
-export const SKIPPED_POSITION_MARGIN = 1.5
 
 /** Formats positions played for display, e.g. "PG/SG" or "SF/PF/C". */
 export function formatPositions(positions: readonly Position[]): string {
