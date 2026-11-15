@@ -56,9 +56,16 @@ export function turnoverChance(
   )
 }
 
-/** Chance a turnover is a steal by `defender`, from a base share for this kind of turnover. */
-export function stealChance(defender: Player, baseShare = HANDLER_STEAL_SHARE): number {
-  return adjustProbability(baseShare, normalizeRating(defender.attributes.stealing))
+/**
+ * Chance a turnover is a steal by `defender`, from a base share for this kind of turnover.
+ * `systemEdge` is his defense's pressure edge (gambling defenses turn more turnovers into steals).
+ */
+export function stealChance(
+  defender: Player,
+  baseShare = HANDLER_STEAL_SHARE,
+  systemEdge = 0,
+): number {
+  return adjustProbability(baseShare, normalizeRating(defender.attributes.stealing) + systemEdge)
 }
 
 /** Form, composure and crowd for both players: a hot defender forces more mistakes. */
@@ -119,13 +126,27 @@ function handlerSecurity(phase: HandlerPhase): number {
 function handlerStealer(phase: HandlerPhase, passing: boolean): Player | undefined {
   const lane = passing && phase.game.rng.chance(PASSING_LANE_STEAL_SHARE)
   const candidate = lane ? phase.receiverDefender : phase.handlerDefender
-  return phase.game.rng.chance(stealChance(candidate, HANDLER_STEAL_SHARE)) ? candidate : undefined
+  const systemEdge = phase.defense.tactics.effects.stealEdge
+  const chance = stealChance(candidate, HANDLER_STEAL_SHARE, systemEdge)
+  return phase.game.rng.chance(chance) ? candidate : undefined
+}
+
+/**
+ * The systems' log-odds push toward a turnover: the defense's ball pressure, plus (in the handler
+ * phase) the offense's ball movement, since every extra pass is another chance to throw it away.
+ */
+function systemTurnoverEdge(offense: TeamState, defense: TeamState, handlerPhase: boolean): number {
+  const pressure = defense.tactics.effects.forcedTurnoverEdge
+  return handlerPhase ? pressure + offense.tactics.effects.handlerTurnoverEdge : pressure
 }
 
 /** Rolls for a handler-phase turnover (lost ball or bad pass). Returns the outcome, or undefined. */
 export function tryHandlerTurnover(phase: HandlerPhase): ActionOutcome | undefined {
   const { game, offense, defense, handler, handlerDefender } = phase
-  const edge = situational(game, offense, defense, handler, handlerDefender)
+  // The situational edge favours the offense, so a system edge toward turnovers is subtracted.
+  const edge =
+    situational(game, offense, defense, handler, handlerDefender) -
+    systemTurnoverEdge(offense, defense, true)
   const chance = turnoverChanceFromSkills(
     phase.base,
     handlerSecurity(phase),
@@ -161,7 +182,9 @@ export function tryShooterTurnover(
   playType: PlayType,
   received: boolean,
 ): ActionOutcome | undefined {
-  const edge = situational(game, offense, defense, shooter, defender)
+  const edge =
+    situational(game, offense, defense, shooter, defender) -
+    systemTurnoverEdge(offense, defense, false)
   const chance = turnoverChanceFromSkills(
     BASE_SHOOTER_TURNOVER[playType],
     ballSecuritySkill(shooter),
@@ -169,7 +192,12 @@ export function tryShooterTurnover(
     edge,
   )
   if (!game.rng.chance(chance)) return undefined
-  const stealer = game.rng.chance(stealChance(defender, SHOOTER_STEAL_SHARE)) ? defender : undefined
+  const stealChanceNow = stealChance(
+    defender,
+    SHOOTER_STEAL_SHARE,
+    defense.tactics.effects.stealEdge,
+  )
+  const stealer = game.rng.chance(stealChanceNow) ? defender : undefined
   return recordTurnover(
     game,
     offense,

@@ -48,6 +48,14 @@ const FAST_BREAK_BY_SOURCE: Record<ReboundSource, number> = {
   freeThrow: 0,
 }
 
+/**
+ * The offense's offensive-rebounding setting on this miss (crash the glass or get back). Missed
+ * free throws are excluded: everyone is lined up on the lane, so there's nothing to crash.
+ */
+function crashEdge(offense: TeamState, source: ReboundSource): number {
+  return source === 'freeThrow' ? 0 : offense.tactics.effects.offensiveReboundEdge
+}
+
 /** Chance the offense gets the rebound, comparing both lineups' rebounding, size and numbers. */
 export function offensiveReboundChance(
   offense: TeamState,
@@ -65,7 +73,7 @@ export function offensiveReboundChance(
   const numbers = NUMBERS_REBOUND_EDGE * (offense.onCourt.length - defense.onCourt.length)
   return adjustProbability(
     BASE_BY_SOURCE[source],
-    skillEdge + HEIGHT_EDGE_WEIGHT * sizeEdge + numbers,
+    skillEdge + HEIGHT_EDGE_WEIGHT * sizeEdge + numbers + crashEdge(offense, source),
   )
 }
 
@@ -116,7 +124,10 @@ function defensiveRebound(
   lineOf(defense, rebounder).defensiveRebounds += 1
   const verb = source === 'block' ? 'recovers the block' : 'defensive rebound'
   log(game, defense, `${shortName(rebounder)} ${verb}`)
-  const fastBreak = maybeFastBreak(game, defense, offense, rebounder, FAST_BREAK_BY_SOURCE[source])
+  // A team that crashed the glass has fewer players back when it loses the board.
+  const crashed = offense.tactics.effects.allowedReboundBreakEdge
+  const base = FAST_BREAK_BY_SOURCE[source]
+  const fastBreak = maybeFastBreak(game, defense, offense, rebounder, base, crashed)
   return { over: true, turnover: false, fastBreak }
 }
 

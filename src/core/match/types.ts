@@ -1,4 +1,5 @@
 import type { Player } from '../players/types.ts'
+import type { TeamSystem } from '../tactics/system.ts'
 
 /**
  * The kinds of shot the engine can produce. The first five are the half-court plays a team
@@ -25,11 +26,29 @@ export const HALF_COURT_PLAY_TYPES: readonly PlayType[] = [
   'three',
 ]
 
+/**
+ * Coaching inputs for one game (see src/core/tactics/coaching.ts, which builds them from the head
+ * coach). Both execution edges are small log-odds edges; 0 is an average coach on his own system.
+ */
+export interface TeamCoaching {
+  /** The system actually run (the coach's preferred one, or the GM's override). */
+  system: TeamSystem
+  /** Log-odds edge on the team's offensive outcomes. */
+  offensiveExecution: number
+  /** Log-odds edge on the team's defensive outcomes. */
+  defensiveExecution: number
+}
+
 /** A team as the match engine sees it. The first five roster players start. */
 export interface MatchTeam {
   id: string
   name: string
   roster: Player[]
+  /**
+   * Coaching inputs for one game. Optional: absent = BALANCED_SYSTEM with zero execution edges
+   * (today's behaviour, byte-identical).
+   */
+  coaching?: TeamCoaching
 }
 
 /** One player's box score line. */

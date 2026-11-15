@@ -3,6 +3,7 @@ import { normalizeRating } from '../shared/probability.ts'
 import type { Contesters } from './contest.ts'
 import { blendByHelp } from './contest.ts'
 import { easeOffEdge } from './blowout.ts'
+import { coachingEdge } from './coaching.ts'
 import type { CourtEnd, GameState, TeamState } from './state.ts'
 import { isClutch } from './state.ts'
 import {
@@ -46,8 +47,9 @@ export function roadEdge(team: TeamState, player: Player): number {
 }
 
 /**
- * Form, clutch composure, the road crowd and blowout easing for one player at one end of the
- * floor: everything about today's situation.
+ * Form, clutch composure, the road crowd, blowout easing and coaching (execution plus system fit)
+ * for one player at one end of the floor: everything about today's situation. Coaching is added
+ * last, so a team without coaching (edge exactly 0) gets bit-for-bit the old sum.
  */
 export function personalEdge(
   game: GameState,
@@ -59,7 +61,8 @@ export function personalEdge(
     formEdge(team, player, end) +
     clutchEdge(game, player) +
     roadEdge(team, player) +
-    easeOffEdge(game, team)
+    easeOffEdge(game, team) +
+    coachingEdge(team.tactics, player, end)
   )
 }
 

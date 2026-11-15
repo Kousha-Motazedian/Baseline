@@ -78,12 +78,12 @@ Game design decisions live in `docs/design/`. Read the relevant doc before imple
 
 - Ask before adding a new dependency.
 - Every change uses developer agents and then a tester agent, run in order:
-  1. **Two developer agents**: they implement the change in parallel, following this file and the relevant design docs.
+  1. **Two developer agents** (Sonnet model): they implement the change in parallel, following this file and the relevant design docs.
      - The work is split into two independent parts with clear file ownership.
      - Each developer works in its own git worktree so they never edit the same files.
      - When both finish, their work is merged and checked (`npm test`, typecheck, lint) before the tester starts.
      - If a change can't be split sensibly, one developer does it and the other reviews or takes the next task.
-  2. **Tester agent**: writes/updates tests, verifies the change independently (incl. batch-sim/balance checks for engine changes), and reports issues. It does not edit `src/`; fixes go back through the developer agents.
+  2. **Tester agent** (Sonnet model): writes/updates tests, verifies the change independently (incl. batch-sim/balance checks for engine changes), and reports issues. It does not edit `src/`; fixes go back through the developer agents.
 - **Progress reporting:** every developer agent messages the main session whenever it finishes a task or starts a new one, saying which task it just finished, which task it's working on now, and what's left. The main session uses these messages for the user's progress updates.
 - **Commits:** always ask the user before committing to a branch, every time, regardless of review results.
 - **Pushing:** only when the user says to push to a branch. At that point (and not before), run a **final review agent on the Fable model**. It:

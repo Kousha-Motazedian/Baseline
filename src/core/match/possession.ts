@@ -38,10 +38,10 @@ import {
   BASE_HANDLER_OFFENSIVE_FOUL,
   BASE_HANDLER_TURNOVER,
   BASE_NON_SHOOTING_FOUL,
-  BASE_PLAY_SHARE,
   BUZZER_SHOT_PENALTY,
   ON_BALL_FOUL_SHARE,
   TRANSITION_PLAY_SHARE,
+  USAGE_EXPONENT,
 } from './tuning.ts'
 import { offensiveFoulTurnover, tryHandlerTurnover, tryShooterTurnover } from './turnover.ts'
 
@@ -84,6 +84,22 @@ export function actionSeconds(rng: Rng, kind: ActionKind, shotClock: number): nu
   return Math.min(seconds, shotClock)
 }
 
+/**
+ * A set's rolled length after the offense's pace (fast teams run shorter half-court sets, slow
+ * ones longer). Fast breaks and putbacks keep their natural length: pace is about how long the
+ * offense works for a shot in the half court. Neutral pace returns the roll untouched.
+ */
+export function pacedSeconds(
+  offense: TeamState,
+  kind: ActionKind,
+  rolled: number,
+  shotClock: number,
+): number {
+  const factor = offense.tactics.effects.setSecondsFactor
+  if (factor === 1 || kind === 'transition' || kind === 'putback') return rolled
+  return Math.min(rolled * factor, shotClock)
+}
+
 /** How long a set takes, and the log-odds clock penalty on its shot (buzzer rush, milking). */
 interface SetTiming {
   seconds: number
@@ -101,7 +117,7 @@ function setTiming(
   kind: ActionKind,
   shotClock: number,
 ): SetTiming {
-  const rolled = actionSeconds(game.rng, kind, shotClock)
+  const rolled = pacedSeconds(offense, kind, actionSeconds(game.rng, kind, shotClock), shotClock)
   if (kind === 'transition') return { seconds: rolled, rush: rushPenalty(game.clock, rolled) }
   const adjusted = Math.min(scoreAdjustedSeconds(game, offense, rolled, shotClock), shotClock)
   const timed = endOfPeriodSeconds(game, offense, adjusted, shotClock, ACTION_TIMING[kind].min)
@@ -110,15 +126,27 @@ function setTiming(
   return { seconds, rush: rushPenalty(game.clock, seconds) + milkShotPenalty(game, offense) }
 }
 
-/** How the offense picks its play: fast-break looks, or half-court sets (with three hunting late). */
+/**
+ * How the offense picks its play: fast-break looks, or half-court sets (with three hunting late).
+ * The system shapes the half-court mix (shot profile, primary action) and how much the best
+ * players dominate the shots (ball movement); fast-break looks are instinctive and keep their mix.
+ */
 function playOptions(
   game: GameState,
   offense: TeamState,
   fastBreak: FastBreak | undefined,
 ): PlayOptions {
   const threeFactor = threePointHuntFactor(game, offense)
-  if (!fastBreak) return { shares: BASE_PLAY_SHARE, helpFactor: 1, threeFactor }
-  return { shares: TRANSITION_PLAY_SHARE, helpFactor: transitionHelpFactor(fastBreak), threeFactor }
+  const usageExponent = USAGE_EXPONENT * offense.tactics.effects.usageExponentFactor
+  if (!fastBreak) {
+    return { shares: offense.tactics.halfCourtShares, helpFactor: 1, threeFactor, usageExponent }
+  }
+  return {
+    shares: TRANSITION_PLAY_SHARE,
+    helpFactor: transitionHelpFactor(fastBreak),
+    threeFactor,
+    usageExponent,
+  }
 }
 
 /**
@@ -163,7 +191,9 @@ function tryNonShootingFoul(set: SetPlay, handlerDefender: Player): ActionOutcom
   const onBall = play.player === handler || game.rng.chance(ON_BALL_FOUL_SHARE)
   const victim = onBall ? handler : play.player
   const fouler = onBall ? handlerDefender : play.contesters.defender
-  const caution = foulCautionEdge(game, defense, fouler)
+  // The defense's pressure setting (aggressive defenses reach more) rides on the caution edge.
+  const caution =
+    foulCautionEdge(game, defense, fouler) + defense.tactics.effects.nonShootingFoulEdge
   if (!game.rng.chance(nonShootingFoulChance(BASE_NON_SHOOTING_FOUL, victim, fouler, caution)))
     return undefined
   const penalty = commitFoul(game, defense, fouler, nonShootingFoulLabel(game, onBall))

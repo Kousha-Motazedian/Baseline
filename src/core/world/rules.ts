@@ -79,6 +79,12 @@ export interface LeagueRules {
   periodStartRule: PeriodStartRule
   /** Players on each team's roster (the generator builds rosters of this size). */
   rosterSize: number
+  /**
+   * The range of per-team coaching salary caps per season, in the league's currency units
+   * (separate from any player salary cap; see docs/design/coaches.md, section 6). A team's own
+   * cap sits inside this range according to its financial power (see `teamCoachCap`).
+   */
+  coachCapRange: { min: number; max: number }
 }
 
 /** North American pro rules: 4 x 12-minute quarters, foul out on 6. */
@@ -111,6 +117,11 @@ export const PRO_RULES: LeagueRules = {
   periodStartRule: 'quarterRotation',
   // 15 standard contracts per team: 30 teams give the design docs' ~450-player league.
   rosterSize: 15,
+  // In US dollars (no player salary data exists yet to scale against). Real NBA head coaches earn
+  // roughly $2M to $15M+ a season; a $15M cap lets the league's most famous coach just fit and
+  // leaves room for assistants' salaries to join this budget in 2.0. The poorest team gets 6M, a
+  // 2.5x spread, so small markets can't afford the famous coaches (an average team gets 10.5M).
+  coachCapRange: { min: 6_000_000, max: 15_000_000 },
 }
 
 /** FIBA/international rules: 4 x 10-minute quarters, foul out on 5. */
@@ -144,4 +155,7 @@ export const FIBA_RULES: LeagueRules = {
   periodStartRule: 'alternatingArrow',
   // FIBA game rosters list 12 players.
   rosterSize: 12,
+  // In euros. Top European club head coaches earn on the order of EUR 1–2M a season and most far
+  // less, so the range is about a tenth of the pro league's (same 2.5x spread).
+  coachCapRange: { min: 600_000, max: 1_500_000 },
 }

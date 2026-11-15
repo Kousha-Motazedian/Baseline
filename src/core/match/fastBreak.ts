@@ -32,14 +32,37 @@ function speedEdge(runners: TeamState, retreat: TeamState): number {
   return normalizeRating(run) - normalizeRating(back)
 }
 
-/** Chance a change of possession turns into a fast break, from a base rate for how it started. */
-export function fastBreakChance(base: number, runners: TeamState, retreat: TeamState): number {
-  return adjustProbability(base, FAST_BREAK_SPEED_WEIGHT * speedEdge(runners, retreat))
+/**
+ * The systems' log-odds edge on a fast break: the runners' transition setting (push or get back
+ * on their own breaks) plus the retreating team's (how balanced it stays when it loses the ball).
+ */
+function systemBreakEdge(runners: TeamState, retreat: TeamState): number {
+  return runners.tactics.effects.fastBreakEdge + retreat.tactics.effects.allowedFastBreakEdge
+}
+
+/**
+ * Chance a change of possession turns into a fast break, from a base rate for how it started.
+ * `extraEdge` is any further system edge for this kind of change of possession (a crashing team
+ * leaves fewer players back after a defensive rebound).
+ */
+export function fastBreakChance(
+  base: number,
+  runners: TeamState,
+  retreat: TeamState,
+  extraEdge = 0,
+): number {
+  return adjustProbability(
+    base,
+    FAST_BREAK_SPEED_WEIGHT * speedEdge(runners, retreat) +
+      systemBreakEdge(runners, retreat) +
+      extraEdge,
+  )
 }
 
 /**
  * Rolls for a fast break after `runners` win the ball. Returns the player who starts it (he
  * pushes the ball up), or undefined. A team protecting a late lead pulls it out instead.
+ * `extraEdge`: see fastBreakChance.
  */
 export function maybeFastBreak(
   game: GameState,
@@ -47,9 +70,10 @@ export function maybeFastBreak(
   retreat: TeamState,
   starter: Player,
   base: number,
+  extraEdge = 0,
 ): Player | undefined {
   if (wantsToMilkClock(game, runners)) return undefined
-  return game.rng.chance(fastBreakChance(base, runners, retreat)) ? starter : undefined
+  return game.rng.chance(fastBreakChance(base, runners, retreat, extraEdge)) ? starter : undefined
 }
 
 /** Starts a transition attack: rolls whether the offense has a numbers advantage. */
