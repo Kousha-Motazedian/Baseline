@@ -24,7 +24,18 @@ export function fireCoach(market: CoachMarket, teamId: string): CoachMarket {
   const headCoaches = Object.fromEntries(
     Object.entries(market.headCoaches).filter(([id]) => id !== teamId),
   )
-  return { headCoaches, pool: [...market.pool, { ...coach, contract: null }] }
+  const firedBy = { ...market.firedBy, [teamId]: [...(market.firedBy[teamId] ?? []), coach.id] }
+  return { headCoaches, pool: [...market.pool, { ...coach, contract: null }], firedBy }
+}
+
+/**
+ * Forgets who fired whom. Call when the coach pool is refreshed at the season rollover (the season
+ * loop doesn't exist yet): the exclusion lasts for the current pool only, so a fired coach can be
+ * considered again next offseason, when a fresh market makes a reunion plausible rather than
+ * an instant boomerang.
+ */
+export function clearFiredHistory(market: CoachMarket): CoachMarket {
+  return { ...market, firedBy: {} }
 }
 
 /**
@@ -67,6 +78,7 @@ export function hireCoach(
   }
   const signed: HeadCoach = { ...coach, contract: offerContract(coach, rules, years) }
   return {
+    ...market,
     headCoaches: { ...market.headCoaches, [teamId]: signed },
     pool: market.pool.filter((c) => c.id !== coachId),
   }
@@ -86,17 +98,22 @@ function compareCandidates(a: HeadCoach, b: HeadCoach): number {
   )
 }
 
-/** The pool coach an AI team would hire: the best-ranked one under its own cap, or null if none. */
+/**
+ * The pool coach an AI team would hire: the best-ranked one under its own cap, or null if none.
+ * A coach the team itself fired is skipped (an owner doesn't take back the man he just let go);
+ * if that leaves nobody affordable the job stays vacant, as with any empty shortlist.
+ */
 export function chooseCoachToHire(
   market: CoachMarket,
   teamId: string,
   rules: LeagueRules,
   finances: TeamFinances,
 ): HeadCoach | null {
-  const affordable = market.pool.filter((c) =>
-    canTeamAffordCoach(market, teamId, c, rules, finances),
+  const fired = market.firedBy[teamId] ?? []
+  const affordable = market.pool.filter(
+    (c) => !fired.includes(c.id) && canTeamAffordCoach(market, teamId, c, rules, finances),
   )
-  return [...affordable].sort(compareCandidates)[0] ?? null
+  return affordable.sort(compareCandidates)[0] ?? null
 }
 
 /** An AI team fills its vacancy with its preferred affordable coach; unchanged if none fits. */

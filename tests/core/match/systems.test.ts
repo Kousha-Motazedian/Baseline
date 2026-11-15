@@ -19,8 +19,9 @@ import { playSeries, seriesTotal, sides, SLOW_TEST_TIMEOUT_MS } from '../../help
 
 /**
  * SHA-256 of 40 fixed-seed games (league teams, every 4th under FIBA rules) produced by the engine
- * BEFORE team systems existed (commit 98b31c0). The engine must still reproduce it exactly with no
- * coaching, and with the balanced system at zero execution edges.
+ * BEFORE team systems existed (commit d9c858b, this branch's parent of the coaches change). The
+ * engine must still reproduce it exactly with no coaching, and with the balanced system at zero
+ * execution edges.
  */
 const PRE_SYSTEMS_HASH = '730b31885f93233ee9737bbe9bc1182b20349daff05a115c1264c7bfbfa23e32'
 

@@ -117,7 +117,7 @@ describe('AI hiring picks the best affordable coach by reputation', () => {
       ...makeCoach({ reputation }),
       id: `P${i}`,
     }))
-    const market = { headCoaches: {}, pool }
+    const market = { headCoaches: {}, pool, firedBy: {} }
     const affordable = pool.filter((c) => salaryDemand(c, PRO_RULES) <= cap)
     const best = [...affordable].sort((a, b) => b.hidden.reputation - a.hidden.reputation)[0]
     expect(affordable.length).toBeLessThan(pool.length)

@@ -68,8 +68,9 @@ const REPUTATION_PER_QUALITY = 6
 const REPUTATION_NOISE_SD = 10
 /** Older coaches are better known: reputation per year of age away from the typical age. */
 const REPUTATION_PER_YEAR = 0.3
+/** Reputation scale bounds (see CoachHidden). */
 const REPUTATION_MIN = 1
-const REPUTATION_MAX = 100
+export const REPUTATION_MAX = 100
 
 /** Adaptability is a personality trait, drawn independently of quality around the average. */
 const ADAPTABILITY_SD = 3.5

@@ -1,7 +1,8 @@
+import { ATTRIBUTE_MAX, ATTRIBUTE_MIN } from '../players/attributes.ts'
 import { clamp } from '../shared/probability.ts'
 import type { Rng } from '../shared/rng.ts'
 import type { LeagueRules } from '../world/rules.ts'
-import { coachQuality } from './coachGenerator.ts'
+import { coachQuality, REPUTATION_MAX } from './coachGenerator.ts'
 import type { CoachContract, HeadCoach } from './types.ts'
 
 /**
@@ -34,11 +35,6 @@ const SALARY_CURVE_EXPONENT = 2
 const REPUTATION_WEIGHT = 0.7
 /** Salaries are rounded to this many currency units, like real contract figures. */
 const SALARY_ROUNDING = 1_000
-/** Reputation scale maximum (see CoachHidden). */
-const REPUTATION_MAX = 100
-/** Attribute scale bounds (1–20), used to put the attribute mean on a 0–1 scale. */
-const ATTRIBUTE_MIN = 1
-const ATTRIBUTE_MAX = 20
 
 /** Coaches this old or older only sign short deals (they are near retirement). */
 const VETERAN_AGE = 65
@@ -65,14 +61,17 @@ export function salaryDemand(coach: HeadCoach, rules: LeagueRules): number {
   return Math.min(rounded, top)
 }
 
-/** The range of contract lengths a coach will accept, by age and reputation. */
+/**
+ * The range of contract lengths a coach asks for, by age and reputation. Only AI hiring and league
+ * setup stick to it; the GM's hireCoach may offer any valid length (see coaches.md).
+ */
 export function contractYearsRange(coach: HeadCoach): { min: number; max: number } {
   const max = coach.age >= VETERAN_AGE ? VETERAN_MAX_YEARS : MAX_CONTRACT_YEARS
   const min = coach.hidden.reputation >= ESTABLISHED_REPUTATION ? 2 : MIN_CONTRACT_YEARS
   return { min: Math.min(min, max), max }
 }
 
-/** A random contract length (in seasons) the coach will accept. */
+/** A random contract length (in seasons) within the coach's own range (AI hiring, league setup). */
 export function contractYears(rng: Rng, coach: HeadCoach): number {
   const range = contractYearsRange(coach)
   return rng.nextInt(range.min, range.max)
