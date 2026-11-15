@@ -76,6 +76,20 @@ function numbersEdge(ctx: ShotContext): number {
   return SHORTHANDED_SHOT_EDGE * (ctx.offense.onCourt.length - ctx.defense.onCourt.length)
 }
 
+/**
+ * The two systems' edge on a half-court shot: the offense's shot quality for this play type (the
+ * price or reward of its shot profile, primary action, pace and ball movement) minus the defense's
+ * contest edge (help priority and pressure). Fast breaks are played before either system is set,
+ * so they get neither.
+ */
+export function systemShotEdge(ctx: ShotContext): number {
+  if (ctx.fastBreak) return 0
+  return (
+    ctx.offense.tactics.effects.shotQualityEdge[ctx.playType] -
+    ctx.defense.tactics.effects.contestEdge[ctx.playType]
+  )
+}
+
 /** The chance this shot goes in (before any foul penalty). */
 export function makeChance(ctx: ShotContext): number {
   const edge =
@@ -89,7 +103,8 @@ export function makeChance(ctx: ShotContext): number {
     numbersEdge(ctx) +
     transitionShotEdge(ctx.fastBreak) -
     keyedDefensePenalty(ctx.game) -
-    (ctx.rushPenalty ?? 0)
+    (ctx.rushPenalty ?? 0) +
+    systemShotEdge(ctx)
   return adjustProbability(BASE_MAKE[ctx.playType], edge)
 }
 
@@ -111,7 +126,8 @@ export function shootingFoulChance(ctx: ShotContext): number {
     FOUL_EDGE_WEIGHT * normalizeRating(ctx.shooter.attributes.aggression) -
     FOUL_EDGE_WEIGHT * normalizeRating(discipline) +
     transitionFoulEdge(ctx.fastBreak) +
-    contestCaution(ctx)
+    contestCaution(ctx) +
+    ctx.defense.tactics.effects.shootingFoulEdge
   return adjustProbability(BASE_SHOOTING_FOUL[ctx.playType], edge)
 }
 
@@ -129,11 +145,14 @@ function contestCaution(ctx: ShotContext): number {
   )
 }
 
-/** Chance a made shot off a pass counts as an assist: better passers set up better shots. */
-export function assistChance(passer: Player, playType: PlayType): number {
+/**
+ * Chance a made shot off a pass counts as an assist: better passers set up better shots.
+ * `systemEdge` is the offense's ball-movement edge (motion offenses assist more of their makes).
+ */
+export function assistChance(passer: Player, playType: PlayType, systemEdge = 0): number {
   return adjustProbability(
     BASE_ASSIST[playType],
-    ASSIST_PASSING_WEIGHT * normalizeRating(passer.attributes.passing),
+    ASSIST_PASSING_WEIGHT * normalizeRating(passer.attributes.passing) + systemEdge,
   )
 }
 
@@ -144,7 +163,8 @@ export function assistChance(passer: Player, playType: PlayType): number {
  */
 function maybeCreditAssist(ctx: ShotContext): string {
   const passer = ctx.passer
-  if (!passer || !ctx.game.rng.chance(assistChance(passer, ctx.playType))) return ''
+  const systemEdge = ctx.offense.tactics.effects.assistEdge
+  if (!passer || !ctx.game.rng.chance(assistChance(passer, ctx.playType, systemEdge))) return ''
   lineOf(ctx.offense, passer).assists += 1
   return ` (assist ${shortName(passer)})`
 }

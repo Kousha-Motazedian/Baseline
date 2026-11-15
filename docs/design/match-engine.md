@@ -406,6 +406,35 @@ the scale, symmetric around average; and (b) road games: a hostile-crowd penalty
 ball security). Composure 20 feels a fifth of it, Composure 1 almost double. `HOME_SHOOTING_EDGE`
 was lowered from 0.03 to 0.01 so the net home edge stays ≈ +1.3 points.
 
+## Team systems and coaching (coaching.ts, src/core/tactics/)
+
+A `MatchTeam` may carry `coaching` (`TeamCoaching`: the system run plus offensive and defensive
+execution edges, built by `coachingInputs` in `src/core/tactics/coaching.ts`). At tip-off
+`teamTactics` (coaching.ts) turns it into the team's `TeamTactics`: the system's lever values
+(`systemEffects`, src/core/tactics/effects.ts), the scaled half-court play shares, the execution
+edges and every roster player's fit. Design and effect sizes: [coaches.md](coaches.md), sections 2–4.
+
+**Identity guarantee.** Without `coaching`, or with `BALANCED_SYSTEM` and zero execution edges,
+every hook adds exactly 0 or multiplies by exactly 1 and none draws a random number, so the engine
+produces byte-identical results to the pre-systems engine. `tests/core/match/systems.test.ts` hashes
+40 fixed-seed games (pro and FIBA) against a hash recorded before systems existed.
+
+Where each lever enters the engine:
+
+| Setting              | Hook                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Pace                 | `pacedSeconds` (possession.ts): half-court/reset/side-out set length ×0.85 / ×1.15; small shot-quality edge                                |
+| Shot profile, action | `halfCourtShares` (play-type share multipliers) + the volume rule's shot-quality edge (`systemShotEdge`)                                   |
+| Ball movement        | usage exponent (`PlayOptions.usageExponent`), assist edge (`assistChance`), handler turnovers, shot quality                                |
+| Transition           | `fastBreakChance`: the runners' own edge plus the retreating team's "allowed" edge                                                         |
+| Offensive rebounding | `offensiveReboundChance` (not on free throws) + extra fast-break edge after the defense's board                                            |
+| Defensive pressure   | turnovers (`systemTurnoverEdge`), steal share, non-shooting and shooting fouls, drive/cut contest                                          |
+| Help priority        | contest edge by play type in `systemShotEdge` (rim vs. jump shots)                                                                         |
+| Execution and fit    | `coachingEdge`, added last in `personalEdge` (situation.ts): the player's shots/ball security on offense, his contests/pressure on defense |
+
+Fast-break shots get no system shot edge (neither system is set in transition). The rotation
+settings have no hook yet. Every team still plays man-to-man (no zone or switching).
+
 ## Calibration
 
 Run `npm run sim:batch` (2,000 games between generated average teams; `--balance` adds the balance
@@ -561,7 +590,7 @@ unrealistic rules.
   trailing defense fouls intentionally on a break, those free throws count as fast-break points.
 - Jump balls during play and injuries aren't modelled. Defensive team rebounds aren't tracked
   (only the offensive team rebound from a block out of bounds).
-- Tendencies are derived from attributes; tactics will later add coach instructions.
+- Tendencies are derived from attributes; the team system (above) scales the play mix, but there are no per-player coach instructions yet.
 
 ## Generated players and teams
 

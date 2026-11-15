@@ -4,6 +4,8 @@ import { randomNormal } from '../shared/normal.ts'
 import { clamp } from '../shared/probability.ts'
 import type { Rng } from '../shared/rng.ts'
 import type { LeagueRules } from '../world/rules.ts'
+import type { TeamTactics } from './coaching.ts'
+import { teamTactics } from './coaching.ts'
 import {
   FORM_CLAMP_SDS,
   FORM_CURVE_EXPONENT,
@@ -35,6 +37,8 @@ export type CourtEnd = 'offense' | 'defense'
 export interface TeamState {
   team: MatchTeam
   isHome: boolean
+  /** The team's system, coach execution and player fit for this game (neutral without coaching). */
+  tactics: TeamTactics
   /**
    * The players on the floor (normally five; fewer only when a FIBA team runs out of eligible
    * players). Index = lineup slot; slot i guards the opponent's slot i.
@@ -144,6 +148,7 @@ export function createTeamState(rng: Rng, team: MatchTeam, isHome: boolean): Tea
   return {
     team,
     isHome,
+    tactics: teamTactics(team),
     onCourt: team.roster.slice(0, 5),
     regulars: team.roster.slice(0, 5),
     lines: new Map(team.roster.map((p) => [p.id, createPlayerLine(p)])),

@@ -79,7 +79,7 @@ This is what makes the Hawks principle real.
 
 The effect sizes are tuned with batch sims: a well-fitted team of average players should beat a poorly fitted team with slightly better players often enough to be visible, but talent still matters most.
 
-**Strength:** perfect fit vs. poor fit is worth about the same as 1 rating point across the roster (roughly 3–4 points of net rating), so system choice matters but can't make a bad roster good.
+**Strength:** perfect fit vs. poor fit is worth roughly 3–4 points of net rating (about the same as half a rating point across the roster; +1 on every attribute is worth about 8 net rating), so system choice matters but can't make a bad roster good.
 
 ## 4. Your override
 
@@ -106,10 +106,34 @@ Live in-game decisions by the user are Baseline 2.0 ("Live match decisions").
 
 ### Coach contracts and the coach cap
 
-- Coaches have **contracts with a salary and a length**. Salary demands come from the coach's Reputation and record.
-- Until full staff finances arrive (3.0), each team has a **coach cap**: the most it can spend on coaching salaries per season. It is league config in `LeagueRules`, separate from the player salary cap.
+- Coaches have **contracts with a salary and a length**. Salary demands come from the coach's **ability and Reputation** (70% reputation, 30% ability; record-based demands come once season records exist). A good coach with a low reputation is a bargain, but doesn't ask for the minimum either: what the league thinks still counts most, so a good evaluator finds real value.
+- Until full staff finances arrive (3.0), each team has its own **coach cap**: the most it can spend on coaching salaries per season. It depends on how rich the team is: its **Market Size** and its **Owner Wealth**. Rich, big-market teams can afford the most famous coaches; poor, small-market teams have to find bargains. The league's cap range is config in `LeagueRules`, separate from the player salary cap.
 - **Firing is free for now:** a fired coach's remaining salary does not count against the coach cap. It will once full team finances arrive in 3.0 (tracked under Full team finances in `docs/TODO.md`).
 - AI teams follow the same cap.
+
+### Implementation notes (coach model)
+
+Code: `src/core/staff/` (`types.ts`, `coachGenerator.ts`, `contracts.ts`, `market.ts`, `hiring.ts`).
+
+- **Generation.** Each coach has an overall **quality** on the 1–20 scale (league mean 10.5, SD 2.5, kept within 4–17). Every attribute is drawn around it with SD 2.5 (wider than players' 2, so coaches have clear strengths and weaknesses), plus a small archetype lean (e.g. Defensive Disciplinarian: better Defensive Coaching and Discipline), centered so it shapes the attributes without raising the level. Age is about 52 ± 8, within 35–70. Adaptability is drawn on its own, independent of quality.
+- **Reputation** = 50 + 6 × (quality − 10.5) + 0.3 × (age − 52) + noise (SD 10), within 1–100. It correlates with quality at about 0.7 to 0.8, so overrated and underrated coaches exist. It only drives salary and AI hiring, never the sim.
+- **Team wealth** (new, in `src/core/finances/`): every team gets **Market Size** and **Owner Wealth**, each 1–20 (mean 10.5, SD 4, mildly correlated at about 0.3, because big markets tend to attract rich owners). Both are generated with the league and kept for full team finances (3.0). The GM sees them exactly. Owner Wealth belongs to the owner, not the franchise: when team sales arrive in 3.0, a new owner brings his own wealth, so the team's coach cap can rise or fall.
+- **Coach cap per team.** Financial power = (Market Size + Owner Wealth) / 2. Cap = min + (max − min) × (power − 1) / 19, rounded to 1,000. The range is `LeagueRules.coachCapRange` (replacing the single `coachCap`): Pro USD 6,000,000–15,000,000 (an average team 10.5M), FIBA EUR 600,000–1,500,000. That's a 2.5× spread between the poorest and richest teams. For now only the head coach counts against it; assistants join this budget in 2.0.
+- **Salary demand.** Value = 0.7 × (reputation / 100) + 0.3 × ((mean attribute − 1) / 19). Demand = max cap × (0.1 + 0.9 × value²), rounded to 1,000, where max cap is the top of the league's range, so a demand never exceeds the richest team's cap. Squared because coaching pay is top-heavy. Demands are the same whichever team asks. Pro examples: an average coach (reputation 50, attributes 10.5) asks about 4.9M; an unknown great coach (reputation 25, attributes 16) about 3.8M; a famous good coach (reputation 80, attributes 14) about 9.4M, beyond the poorest teams' caps; reputation 100 with top attributes 13.8–15M, which only the richest teams can afford. The cheapest demand (1.5M) is below the lowest cap (6M), so every team can always hire someone.
+- **Affordability.** A team can hire a coach only if its current coaching spending plus his demand fits its own cap. The cap comes from `teamCoachCap(finances, rules)`; `canTeamAffordCoach`, `hireCoach`, `chooseCoachToHire` and `aiHireCoach` all take the team's `TeamFinances`. The AI hires the best coach it can afford (same reputation-first ranking).
+- **Contract length** is 1–5 seasons. Coaches aged 65 or older sign for at most 2; coaches with reputation 60 or more won't sign for 1.
+- **Market.** `CoachMarket` holds `headCoaches` (by team id) and `pool`. `assignLeagueCoaches` gives every team a new coach (ids `HC1`…) and builds a pool of 0.4 × teams (12 for 30 teams; ids `FA1`…). Pool coaches have a lower mean quality (9.5), because the best coaches mostly have jobs. Initial assignment respects each team's cap: `assignLeagueCoaches` takes every team's finances; a team whose drawn coach asks more than it can afford gets a replacement drawn from the same distribution (up to 25 tries, new ids after the last `HC` id; the pricey coach is simply not in that league), so it stays deterministic.
+- **Hiring and firing** are pure functions. `fireCoach` is free and sends the coach back to the pool. `hireCoach` needs a vacant job, a pool coach and a cap fit; he signs at his demand. The AI (`chooseCoachToHire` / `aiHireCoach`) ranks by reputation, then by mean attribute, then by id, so it leans on reputation like a weak human evaluator. `shouldFireCoach(record, expectations)` fires a coach whose win percentage falls more than the tolerance (default 0.15) below expectations. Calling it is left to the season loop, which doesn't exist yet.
+
+## Implementation notes: systems, fit and override (calibration)
+
+Code: `src/core/tactics/` (`system.ts`, `effects.ts`, `fit.ts`, `coaching.ts`, `tuning.ts`); engine hooks are listed in [match-engine.md](match-engine.md). All effect sizes live in `tuning.ts`. Measured with `npm run sim:batch -- --systems` (400 paired games per row, report only):
+
+- **Fit size.** Perfect vs. poor fit (`FIT_EDGE` ±0.02 log-odds on each player's own actions) is worth **+3.40 net rating** per 100 possessions (target 3–4). The best vs. the worst coach (`EXECUTION_EDGE` ±0.02) is also +3.40. For scale, +1 on every attribute is worth +7.9 net rating, so the fit swing equals about 0.43 attribute points (target agreed as 3–4 net rating, i.e. about half a rating point).
+- **Realistic rosters fit all systems about equally.** Generated rosters aren't built around a system, so the best- vs. worst-fitting archetype for a random team differs by only +0.40 net rating (starters' fit gap 0.22), and the Hawks test (fitted average team vs. poorly fitted +0.5 team) is unchanged at A winning 0.357 with or without systems. The full fit swing only shows for rosters built or coached for a system (AI roster building and GM choices, later steps).
+- **Familiarity (section 4).** Overriding every setting costs a rigid coach (Adaptability and Tactical Knowledge 1) -2.24 net rating and an adaptable one (20/20) -0.44.
+- **Options are trade-offs, not free buffs.** Net rating of each option alone, vs. balanced, for an average roster: within about ±1.5 (largest: conservative pressure -1.5, getting back on the glass -1.5, crashing +1.6, fast pace -1.2, post-ups -1.2). Their stat moves are as intended (e.g. three-heavy +8.2 pts of 3PA share, fast +7.4 possessions, crash +6.4 ORB%).
+- **League averages** (2,000 games, no coaching = unchanged engine): all targets pass except overtime rate (0.044, the known overtime gap, owned by the in-game decisions step). Balance tests: offense:defense 1.40 (target 1.30-1.50), +3 everywhere shifts the league +0.98 (within ±2). With `--league-systems` (every team a random archetype, average coach) drift is small: ORB% 0.227 (target 0.23-0.27) and steals 8.00 (limit 8.0) sit at the edge of range; overtime 0.040. Not tuned further because real leagues' coaches will vary and the drift is under 1% on each stat.
 
 ## 7. Out of scope for this step
 

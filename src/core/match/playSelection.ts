@@ -30,6 +30,8 @@ export interface PlayOptions {
   helpFactor: number
   /** Multiplier on the weight of threes (late-game three hunting; 1 = normal). */
   threeFactor: number
+  /** Exponent on each player's total weight when choosing the shooter (default USAGE_EXPONENT). */
+  usageExponent?: number
 }
 
 /** Normal half-court play selection. */
@@ -104,6 +106,7 @@ export function choosePlay(
   options: PlayOptions = HALF_COURT_OPTIONS,
 ): PlayChoice {
   const byPlayer = offense.onCourt.map((player) => playerOptions(offense, defense, player, options))
-  const chosen = pickWeighted(rng, byPlayer, (c) => totalWeight(c, options) ** USAGE_EXPONENT)
+  const exponent = options.usageExponent ?? USAGE_EXPONENT
+  const chosen = pickWeighted(rng, byPlayer, (c) => totalWeight(c, options) ** exponent)
   return pickWeighted(rng, chosen, (o) => optionWeight(o, options))
 }

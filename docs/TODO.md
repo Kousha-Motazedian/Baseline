@@ -76,6 +76,11 @@ Deferred fixes from code reviews. Tick an item off (or delete it) when it lands;
 - [ ] `numberArg` is duplicated in `tools/inspect-league.ts` and `tools/batch-sim.ts` (share a `tools/args.ts`), and `useAverageTeams` in `batch-sim.ts` is a module-level mutable flag (pass it as a parameter). (`tools/`)
 - [ ] FIBA 12-man rosters split into units of 5/5/2, so each team's last two bench spots get random positions. Fine for now; revisit with roster building and the draft. (`leagueRosterSpots` in `src/core/data/teamGenerator.ts`)
 
+## Coaches and systems
+
+- [ ] **Hawks effect not visible yet (accepted for now).** Generated rosters aren't built around a system, so a random team fits every archetype about equally (best vs. worst archetype +0.40 net rating) and the Hawks test (fitted average team vs. poorly fitted +0.5 team) is 0.357 with or without systems. Revisit once AI roster building, the draft or GM signings can build rosters for a system. (`docs/design/coaches.md`, `tools/batch-sim.ts --systems`)
+- [ ] `affordableCoach` silently returns the cheapest of 26 draws even when he is over the team's cap, if every redraw fails. Impossible with the real rules (~1e-13 per team), but a custom or modded `coachCapRange` below the cheapest possible demand (10% of the range max) would make a team overspend. Validate the range (min ≥ cheapest demand) or throw a `RangeError`, and document it; `tests/core/staff/teamCapsSpec.test.ts` pins today's behaviour as "KNOWN BEHAVIOUR". (`src/core/staff/market.ts:68-80`)
+
 ## Performance (future)
 
 Not needed yet. Do these only when simulation speed becomes a real problem (e.g. simming a full season with every league is too slow). If they are not enough, see the Rust port under Future features.
@@ -134,6 +139,7 @@ Planned features beyond the current work, tagged by release.
 - [ ] **Fantasy draft and custom league setup (Baseline 3.0).** (`src/core/world/`, `src/core/draft/`)
 - [ ] **College basketball (Baseline 3.0):** college teams and seasons as the prospect pipeline. (`src/core/world/`, `src/core/draft/`)
 - [ ] **Expansion and relocation (Baseline 3.0):** league expansion with expansion drafts (protected lists, picks from existing rosters) and franchise relocation (new city, name and market, with effects on finances and fan base). (`src/core/world/`, `src/core/draft/`, `src/core/finances/`)
+- [ ] **Team sales and new owners (Baseline 3.0):** owners can sell their teams and new owners take over. A new owner brings his own Owner Wealth (and personality), so a sale can make the team richer or poorer: it moves the team's coach cap now and its budgets once full team finances exist. Ties into relocation (a new owner may move the team) and owner goals (a new owner sets new objectives). (`src/core/finances/`, `src/core/world/`, `src/core/career/`)
 - [ ] **Dual GM and head coach role (Baseline 3.0):** a career can hold both jobs at once, running roster moves and coaching together, with its own expectations from the owner. 1.0 has the GM role and 2.0 adds the coach-only role (see Career depth). (`src/core/career/`)
 - [ ] **Advanced analytics (Baseline 3.0):** advanced metrics such as PER and win shares, building on 2.0's basic analytics. (`src/core/match/`, `src/renderer/`)
 - [ ] **Localization (Baseline 3.0):** the game in other languages. (`src/renderer/`)
