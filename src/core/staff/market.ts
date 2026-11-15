@@ -23,6 +23,13 @@ export interface CoachMarket {
   headCoaches: Readonly<Record<string, HeadCoach>>
   /** Unemployed coaches (contract null) available to hire. */
   pool: readonly HeadCoach[]
+  /**
+   * Coaches each team has fired, by team id (coach ids in firing order). The AI never re-hires
+   * one of these for the same team; other teams and the GM's own hireCoach are unaffected. Plain
+   * data so saves serialise it as is. Cleared by clearFiredHistory (hiring.ts) when the pool is
+   * refreshed.
+   */
+  firedBy: Readonly<Record<string, readonly string[]>>
 }
 
 /**
@@ -102,6 +109,7 @@ export function assignLeagueCoaches(
 ): CoachMarket {
   const coaches = generateCoaches(rng, teamIds.length, 'HC')
   let replacements = 0
+  /** The next unused head-coach id, continuing after the last dealt `HC` id. */
   const nextId = (): string => `HC${teamIds.length + ++replacements}`
   const headCoaches: Record<string, HeadCoach> = {}
   teamIds.forEach((teamId, i) => {
@@ -113,7 +121,7 @@ export function assignLeagueCoaches(
     headCoaches[teamId] = signCoach(rng, coach, rules)
   })
   const pool = generateCoachPool(rng, startingPoolSize(teamIds.length))
-  return { headCoaches, pool }
+  return { headCoaches, pool, firedBy: {} }
 }
 
 /** A team's coaching salaries this season (fired coaches are free; see coachSpending). */

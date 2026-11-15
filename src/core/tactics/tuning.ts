@@ -13,8 +13,9 @@ export type PlayTypeValues = Record<PlayType, number>
 // --- Pace ------------------------------------------------------------------------------------
 
 /**
- * Half-court set length multipliers. ±15% moves possessions by roughly ±4 per 48 minutes (half-court
- * sets are most of a possession's clock; fast breaks and putbacks keep their own length).
+ * Half-court set length multipliers. ±15% moves the team's possessions by about +7 (fast) and −6
+ * (slow) per 48 minutes (half-court sets are most of a possession's clock; fast breaks and
+ * putbacks keep their own length).
  */
 export const FAST_PACE_SECONDS_FACTOR = 0.85
 export const SLOW_PACE_SECONDS_FACTOR = 1.15
@@ -196,15 +197,15 @@ export const FIT_SCALE = 2
 /**
  * Execution edge for a 20 in Offensive/Defensive Coaching (a 1 gets about the negative; 10.5 is
  * zero). Same size as FIT_EDGE: best vs. worst coach ≈ perfect vs. poor fit ≈ 3.5 net rating.
- * Why not bigger: one man on the sideline shouldn't outweigh the 13 players he coaches, and the
+ * Why not bigger: one man on the sideline shouldn't outweigh the players he coaches, and the
  * design doc wants coaching to matter without turning bad rosters into good ones.
  */
 export const EXECUTION_EDGE = 0.02
 
 /**
- * Familiarity: share of the execution range lost when EVERY setting on one side is overridden by
- * a coach with no Adaptability or Tactical Knowledge. Each overridden setting costs its side's
- * share (1/6 of this on offense, 1/2 on defense).
+ * Familiarity: log-odds lost on one side when EVERY setting on that side is overridden by a coach
+ * with no Adaptability or Tactical Knowledge (as much as the gap between an average and a top
+ * coach). Each overridden setting costs its side's share (1/6 of this on offense, 1/2 on defense).
  */
 export const FAMILIARITY_PENALTY = 0.02
 

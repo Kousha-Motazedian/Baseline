@@ -119,7 +119,7 @@ describe('hireCoach', () => {
   it('lets a rich team afford a famous coach that a poor team cannot', () => {
     const famous = candidate('star', 90, 16)
     const demand = salaryDemand(famous, PRO_RULES)
-    const empty: CoachMarket = { headCoaches: {}, pool: [famous] }
+    const empty: CoachMarket = { headCoaches: {}, pool: [famous], firedBy: {} }
     const poor = financesAt('P', 1)
     const rich = financesAt('R', 20)
     expect(demand).toBeGreaterThan(teamCoachCap(poor, PRO_RULES))
@@ -135,6 +135,7 @@ describe('AI hiring', () => {
   it('ranks by reputation first, then quality', () => {
     const market: CoachMarket = {
       headCoaches: {},
+      firedBy: {},
       pool: [
         candidate('quiet-genius', 40, 17),
         candidate('famous-a', 80, 8),
@@ -145,7 +146,9 @@ describe('AI hiring', () => {
   })
 
   it('returns null when the pool is empty or nobody is affordable', () => {
-    expect(chooseCoachToHire({ headCoaches: {}, pool: [] }, 'T1', PRO_RULES, fin('T1'))).toBeNull()
+    expect(
+      chooseCoachToHire({ headCoaches: {}, pool: [], firedBy: {} }, 'T1', PRO_RULES, fin('T1')),
+    ).toBeNull()
     // T30 still has its coach, so a full-cap coach doesn't fit next to him.
     const market: CoachMarket = { ...league(), pool: [candidate('star', 100, 20)] }
     expect(chooseCoachToHire(market, 'T30', PRO_RULES, fin('T30'))).toBeNull()
@@ -155,6 +158,7 @@ describe('AI hiring', () => {
   it('skips a famous coach the team cannot afford and takes the best one it can', () => {
     const market: CoachMarket = {
       headCoaches: {},
+      firedBy: {},
       pool: [candidate('star', 100, 20), candidate('solid', 40, 12)],
     }
     const poor = financesAt('P', 1)

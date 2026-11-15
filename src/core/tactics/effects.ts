@@ -105,11 +105,7 @@ function combine(
 function playShareFactors(system: TeamSystem): PlayTypeValues {
   const profile = PLAY_SHARE_FACTORS[system.shotProfile]
   const action = PLAY_SHARE_FACTORS[system.primaryAction]
-  return combine(
-    everyPlay(1),
-    combine(profile, action, (x, y) => x * y),
-    (x, y) => x * y,
-  )
+  return combine(profile, action, (x, y) => x * y)
 }
 
 /**

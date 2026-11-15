@@ -74,7 +74,7 @@ describe('league-wide hiring under the cap', () => {
     }
     const ids = [...Object.values(market.headCoaches), ...market.pool].map((c) => c.id)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(Object.keys(market.headCoaches).length + 0).toBe(30)
+    expect(Object.keys(market.headCoaches)).toHaveLength(30)
   })
 
   it('can leave a vacancy unfilled when the team cap is below every demand', () => {
