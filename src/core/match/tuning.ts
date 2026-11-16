@@ -54,13 +54,14 @@ export const PLAY_FIT_DEFENSE_WEIGHT = 1.5
 
 /**
  * Shots after which a player's weight starts to fall (see heavyUsageDamping), and the extra shots
- * that halve it: at 24 shots no change, at 36 (scale 12) half the weight.
+ * that halve it: no change up to 19 shots, half the weight at 27 (19 + scale 8), a third at 35.
  */
 export const HEAVY_USAGE_SHOTS = 19
 export const HEAVY_USAGE_SCALE = 8
 /**
  * How much shot volume concentrates on the lineup's most attractive player. 1 = proportional to
- * their total play weight; 0.6 keeps the top scorer near ~29% of team FGA (see choosePlay).
+ * their total play weight; 0.74 (up from 0.6 once heavy-usage damping trimmed the 50-point tail)
+ * is what the rotations calibration settled on (see choosePlay and match-engine.md).
  */
 export const USAGE_EXPONENT = 0.74
 

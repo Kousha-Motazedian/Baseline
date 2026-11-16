@@ -97,7 +97,8 @@ function totalWeight(choices: readonly PlayChoice[], options: PlayOptions): numb
 /**
  * Weight multiplier (1 or less) for a player who has already taken a lot of shots this game: the
  * defense adjusts to a hot scorer (face-guarding, doubles) and teammates demand touches, so the
- * 35th shot is harder to get than the 15th. It trims the very top of the scoring distribution
+ * 35th shot is harder to get than the 15th. It reads the player's field goal attempts so far in
+ * this game (the live box score line), not his season or his rating. It trims the very top of the scoring distribution
  * (50-point nights) without touching ordinary 30-point stars.
  */
 function heavyUsageDamping(offense: TeamState, choices: readonly PlayChoice[]): number {

@@ -352,7 +352,7 @@ The `exp()` form matters: adding the same amount to every rating multiplies ever
 by the same factor, so a uniformly better league keeps the same shot mix.
 
 Selection is two-step: first the player, weighted by their total option weight raised to
-`USAGE_EXPONENT = 0.6`, then the play type within that player. The compression stops one
+`USAGE_EXPONENT = 0.74` (0.6 before the rotations calibration), then the play type within that player. The compression stops one
 player who is a few points better than his teammates from taking 50+ shots a game (real defenses
 load up on stars; teammates need touches). It keeps the invariance property.
 
@@ -640,7 +640,7 @@ What was tuned (`tuning.ts`, `tactics/rotationTuning.ts`):
 - **Heavy-usage damping** (`HEAVY_USAGE_SHOTS` 19, `HEAVY_USAGE_SCALE` 8, `playSelection.ts`): a
   player's shot weight falls once he has taken many shots (the defense adjusts to a hot scorer).
   It trims the 50-point tail (50+ games were 0.02-0.025 with a 40+ rate of ~0.11) without
-  touching ordinary star nights, so `USAGE_EXPONENT` could rise 0.6 -> 0.72 to lift 40+ games.
+  touching ordinary star nights, so `USAGE_EXPONENT` could rise 0.6 -> 0.74 to lift 40+ games.
 - **`OFFENSE_EDGE_WEIGHT`** 0.75 -> 0.70 (defense stays 0.75): the offense:defense ratio sat at
   1.50-1.61 across seeds; it is now ~1.4, for a league-wide +0.4 pts/100 shift.
 - **Foul caution** 2 -> 1.6 and **`BASE_FREE_THROW`** 0.78 -> 0.786 (foul-outs and FT% were just
