@@ -18,7 +18,7 @@ import {
   withAttributes,
   withConsistency,
 } from '../../helpers/fixtures.ts'
-import { makeGameState } from '../../helpers/gameState.ts'
+import { makeGameState, withRosterStarters } from '../../helpers/gameState.ts'
 import {
   playerTotal,
   playSeries,
@@ -112,26 +112,24 @@ describe('shooting attributes', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
   })
 })
 
+/**
+ * The opponent with its roster-slot-4 big's Shot Blocking set to `rating`, starting him. The
+ * coach picks starters by value and position, so without the pin a Shot Blocking change could
+ * demote the big to the bench and the test would measure rotation instead of the attribute.
+ */
+function pinnedBig(rating: number): MatchTeam {
+  return withRosterStarters(
+    updatePlayer(OPPONENT, 4, (p) => withAttributes(p, { shotBlocking: rating })),
+  )
+}
+
 describe('defensive attributes', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
   it('raising a big’s Shot Blocking raises his team’s blocks', () => {
-    const low = seriesTotal(
-      series(
-        TEAM,
-        updatePlayer(OPPONENT, 4, (p) => withAttributes(p, { shotBlocking: 3 })),
-      ),
-      'away',
-      'blocks',
-    )
-    const high = seriesTotal(
-      series(
-        TEAM,
-        updatePlayer(OPPONENT, 4, (p) => withAttributes(p, { shotBlocking: 20 })),
-      ),
-      'away',
-      'blocks',
-    )
-    // Measured 3.5 → 5.8 per game.
-    expect(high / low).toBeGreaterThan(1.3)
+    const low = seriesTotal(series(TEAM, pinnedBig(3)), 'away', 'blocks')
+    const high = seriesTotal(series(TEAM, pinnedBig(20)), 'away', 'blocks')
+    // Measured 3.5 → 5.8 per game when he played all 48 minutes; with rotations he plays about 2/3
+    // of the game (about 1.18 with the stub rotation).
+    expect(high / low).toBeGreaterThan(1.1)
   })
 
   it('a strong rim protector cuts the opponent’s share of drives and cuts', () => {

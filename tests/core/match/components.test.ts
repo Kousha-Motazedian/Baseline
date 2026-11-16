@@ -60,13 +60,13 @@ function shotContext(
 }
 
 describe('freeThrowChance', () => {
-  it('is linear in Free Throw: ≈61% at 1, 78% at average, ≈95% at 20', () => {
+  it('is linear in Free Throw: ≈61.5% at 1, 78.6% at average, ≈95.7% at 20', () => {
     /** Free-throw chance at a given Free Throw rating. */
     const at = (r: number): number =>
       freeThrowChance(makePlayer({ id: 'a', attributes: { freeThrow: r } }))
     expect(at(10.5)).toBeCloseTo(BASE_FREE_THROW, 10)
-    expect(at(1)).toBeCloseTo(0.609, 3)
-    expect(at(20)).toBeCloseTo(0.951, 3)
+    expect(at(1)).toBeCloseTo(0.6149, 3)
+    expect(at(20)).toBeCloseTo(0.957, 3)
     expect(at(14) - at(12)).toBeCloseTo(at(8) - at(6), 10)
   })
 
@@ -374,8 +374,8 @@ describe('rollForm', () => {
     }
   })
 
-  it('swings far more for inconsistent players (Consistency 1 vs. 20 ≈ 10x)', () => {
-    expect(formSpread(1) / formSpread(20)).toBeGreaterThan(8)
+  it('swings far more for inconsistent players (Consistency 1 vs. 20 ≈ 6.7x)', () => {
+    expect(formSpread(1) / formSpread(20)).toBeGreaterThan(6)
     expect(formSpread(10.5)).toBeLessThan(formSpread(5))
     expect(formSpread(10.5)).toBeGreaterThan(formSpread(15))
     // Out-of-scale values are clamped to the ends of the scale.
@@ -385,45 +385,31 @@ describe('rollForm', () => {
 })
 
 describe('commitFoul (foul-out substitution)', () => {
-  /** A 10-man flat team with chosen heights, so the closest-height rule is easy to check. */
-  function teamWithHeights(heights: readonly number[]) {
-    const team = makeFlatTeam('A', 10)
-    team.roster = team.roster.map((p, i) => ({
-      ...p,
-      measurables: { ...p.measurables, heightCm: heights[i] ?? 200 },
-    }))
-    return team
-  }
-
-  it('replaces a fouled-out player in the same slot with the closest-height bench player', () => {
-    const home = teamWithHeights([190, 192, 200, 202, 212, 185, 193, 205, 208, 220])
-    const game = makeGameState({ home, away: makeFlatTeam('B', 10) })
+  it("replaces a fouled-out player in the same slot with the coach's replacement", () => {
+    const game = makeGameState({ home: makeFlatTeam('A', 10), away: makeFlatTeam('B', 10) })
     const big = slot(game.home.onCourt, 4)
     const line = game.home.lines.get(big.id)
     if (!line) throw new Error('missing line')
     line.personalFouls = PRO_RULES.personalFoulLimit - 1
     commitFoul(game, game.home, big, 'Shooting foul')
     expect(line.personalFouls).toBe(PRO_RULES.personalFoulLimit)
-    expect(slot(game.home.onCourt, 4).measurables.heightCm).toBe(208)
+    expect(game.home.onCourt).toHaveLength(5)
     expect(game.home.onCourt).not.toContain(big)
-    expect(game.playByPlay.at(-1)?.text).toContain('fouls out')
+    expect(game.home.disqualified.has(big.id)).toBe(true)
+    expect(game.playByPlay.some((e) => e.text.includes('fouls out'))).toBe(true)
   })
 
-  it('skips bench players who have already fouled out', () => {
-    const home = teamWithHeights([190, 192, 200, 202, 212, 185, 193, 205, 208, 220])
-    const game = makeGameState({ home, away: makeFlatTeam('B', 10) })
-    const benchBig = slot(home.roster, 8)
-    const benchLine = game.home.lines.get(benchBig.id)
-    if (!benchLine) throw new Error('missing line')
-    benchLine.personalFouls = PRO_RULES.personalFoulLimit
-    game.home.disqualified.add(benchBig.id)
+  it('never brings in a disqualified bench player', () => {
+    const game = makeGameState({ home: makeFlatTeam('A', 10), away: makeFlatTeam('B', 10) })
+    // Everyone on the bench but one has already fouled out.
+    const bench = game.home.team.roster.slice(5)
+    for (const p of bench.slice(0, -1)) game.home.disqualified.add(p.id)
     const big = slot(game.home.onCourt, 4)
     const line = game.home.lines.get(big.id)
     if (!line) throw new Error('missing line')
     line.personalFouls = PRO_RULES.personalFoulLimit - 1
     commitFoul(game, game.home, big, 'Shooting foul')
-    // 208 is out, so 205 and 220 are next; 205 is 7 cm away vs 8 cm.
-    expect(slot(game.home.onCourt, 4).measurables.heightCm).toBe(205)
+    expect(slot(game.home.onCourt, 4)).toBe(bench[bench.length - 1])
   })
 
   it('pro, no bench: keeps the player on, and every further foul is a technical free throw', () => {

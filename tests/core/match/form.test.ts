@@ -16,11 +16,11 @@ function rolls(consistency: number, draws: number): number[] {
 }
 
 describe('Consistency → form spread', () => {
-  it('shrinks strictly as Consistency rises, ~10x from 1 to 20', () => {
+  it('shrinks strictly as Consistency rises, ~6.7x from 1 to 20', () => {
     for (let c = 1; c < 20; c++) expect(formSpread(c + 1)).toBeLessThan(formSpread(c))
-    expect(formSpread(1) / formSpread(20)).toBeCloseTo(10, 6)
-    expect(formSpread(1)).toBeCloseTo(0.3, 10)
-    expect(formSpread(10.5)).toBeCloseTo(0.0975, 10)
+    expect(formSpread(1) / formSpread(20)).toBeCloseTo(0.2 / 0.03, 6)
+    expect(formSpread(1)).toBeCloseTo(0.2, 10)
+    expect(formSpread(10.5)).toBeCloseTo(0.0725, 10)
   })
 
   it('clamps out-of-range ratings to the 1–20 ends', () => {

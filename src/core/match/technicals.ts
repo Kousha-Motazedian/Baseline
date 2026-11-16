@@ -1,8 +1,8 @@
 import type { Player } from '../players/types.ts'
 import { adjustProbability, normalizeRating } from '../shared/probability.ts'
 import { attemptFreeThrows, bestFreeThrowShooter } from './freeThrows.ts'
-import { sitsForFouls, updateFoulTroubleBench } from './foulTrouble.ts'
 import { disqualify } from './lineup.ts'
+import { applySubstitutions } from './substitutions.ts'
 import type { GameState, TeamState } from './state.ts'
 import { isClutch, lineOf, log, opponentOf, shortName } from './state.ts'
 import {
@@ -64,16 +64,14 @@ export function assessTechnical(game: GameState, team: TeamState, player: Player
   technicalFreeThrow(game, team)
   // Some leagues (FIBA) count technicals toward the personal-foul limit as well.
   if (game.rules.technicalsCountTowardFoulLimit) line.personalFouls += 1
-  /** True if a possible replacement is himself sitting with fouls (steers the pick away from him). */
-  const sitting = (p: Player): boolean => sitsForFouls(game, team, p)
   if (line.technicalFouls >= game.rules.technicalFoulsToEject) {
-    disqualify(game, team, player, 'ejected', sitting)
+    disqualify(game, team, player, 'ejected')
   } else if (line.personalFouls >= game.rules.personalFoulLimit) {
-    disqualify(game, team, player, 'fouledOut', sitting)
+    disqualify(game, team, player, 'fouledOut')
   }
-  // STOPGAP: where a technical is also a personal foul (FIBA) it can put him in foul trouble;
-  // the technical is a dead ball, so the bench check runs right away.
-  if (game.rules.technicalsCountTowardFoulLimit) updateFoulTroubleBench(game, team)
+  // Where a technical is also a personal foul (FIBA) it can put him in foul trouble; the
+  // technical is a dead ball, so the coach may substitute right away.
+  if (game.rules.technicalsCountTowardFoulLimit) applySubstitutions(game, team)
 }
 
 /** Rolls for a technical after a foul by `player`, and assesses it if it happens. */

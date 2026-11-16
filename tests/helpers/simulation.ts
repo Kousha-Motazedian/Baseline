@@ -7,7 +7,7 @@ import type { LeagueRules } from '../../src/core/world/rules.ts'
 import { PRO_RULES } from '../../src/core/world/rules.ts'
 
 /** Numeric fields of a player box score line. */
-export type LineField = Exclude<keyof PlayerLine, 'playerId' | 'name'>
+export type LineField = Exclude<keyof PlayerLine, 'playerId' | 'name' | 'started'>
 
 /** Sums one numeric box score field across a team's player lines. */
 export function teamTotal(team: TeamResult, field: LineField): number {

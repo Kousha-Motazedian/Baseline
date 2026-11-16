@@ -2,9 +2,10 @@ import { createRng } from '../shared/rng.ts'
 import type { LeagueRules } from '../world/rules.ts'
 import type { PossessionStart } from './possession.ts'
 import { HALF_COURT_START, simulatePossession } from './possession.ts'
-import { updateFoulTroubleBench } from './foulTrouble.ts'
+import { applyBreakRecovery } from './fatigue.ts'
 import type { GameState, TeamState } from './state.ts'
 import { createTeamState, log, opponentOf } from './state.ts'
+import { applyBothSubstitutions } from './substitutions.ts'
 import { resetTeamFouls } from './teamFouls.ts'
 import type { MatchResult, MatchTeam, TeamResult } from './types.ts'
 
@@ -50,13 +51,13 @@ function playPeriod(game: GameState, lengthSeconds: number, starter: TeamState):
   game.home.periodPoints[game.period - 1] ??= 0
   game.away.periodPoints[game.period - 1] ??= 0
   resetTeamFouls(game)
+  // Players rest during the break before this period (more at halftime).
+  applyBreakRecovery(game)
   let offense = starter
   let start: PossessionStart = HALF_COURT_START
   while (game.clock > 0) {
-    // STOPGAP foul-trouble benching: possession changes are the dead balls where the bench
-    // returns (a new period, or the late-game release).
-    updateFoulTroubleBench(game, game.home)
-    updateFoulTroubleBench(game, game.away)
+    // Every possession starts at a dead ball: the coaches may substitute.
+    applyBothSubstitutions(game)
     const defense = offense === game.home ? game.away : game.home
     const end = simulatePossession(game, offense, defense, start)
     start = { fastBreak: end.fastBreak, afterTurnover: end.turnover }
@@ -95,8 +96,8 @@ export function simulateGame(options: SimulateGameOptions): MatchResult {
   const game: GameState = {
     rng,
     rules: options.rules,
-    home: createTeamState(rng, options.home, true),
-    away: createTeamState(rng, options.away, false),
+    home: createTeamState(rng, options.home, true, options.rules),
+    away: createTeamState(rng, options.away, false, options.rules),
     period: 1,
     clock: 0,
     playByPlay: [],

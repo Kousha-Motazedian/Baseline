@@ -1,5 +1,5 @@
 /**
- * Team systems in the match engine: the no-coaching / balanced-system identity, determinism, and
+ * Team systems in the match engine: the no-coaching / golden-game hash, determinism, and
  * sensitivity tests (each setting moves its lever in the right direction). Every series is seeded
  * and compares the same matchup with one change, on the same game seeds.
  */
@@ -11,6 +11,7 @@ import type { MatchResult, MatchTeam, PlayType } from '../../../src/core/match/t
 import { PLAY_TYPES } from '../../../src/core/match/types.ts'
 import { createRng } from '../../../src/core/shared/rng.ts'
 import type { TeamSystem } from '../../../src/core/tactics/system.ts'
+import { buildRotationPlan } from '../../../src/core/tactics/rotation.ts'
 import { archetypeSystem, BALANCED_SYSTEM } from '../../../src/core/tactics/system.ts'
 import { FIBA_RULES, PRO_RULES } from '../../../src/core/world/rules.ts'
 import { runningSystem, systemOnly } from '../../helpers/coaching.ts'
@@ -18,12 +19,12 @@ import { generatedPair } from '../../helpers/fixtures.ts'
 import { playSeries, seriesTotal, sides, SLOW_TEST_TIMEOUT_MS } from '../../helpers/simulation.ts'
 
 /**
- * SHA-256 of 40 fixed-seed games (league teams, every 4th under FIBA rules) produced by the engine
- * BEFORE team systems existed (commit d9c858b, this branch's parent of the coaches change). The
- * engine must still reproduce it exactly with no coaching, and with the balanced system at zero
- * execution edges.
+ * SHA-256 of 40 fixed-seed games (league teams, every 4th under FIBA rules), recorded after
+ * rotations (the real tactics/rotation code) and fatigue were added and calibrated (rotations change every game, so the pre-rotations hash
+ * 730b3188... from the pre-systems engine is retired). Any change to the engine, the rotation
+ * code or the RNG draw order changes it: re-record it deliberately and say why in the commit.
  */
-const PRE_SYSTEMS_HASH = '730b31885f93233ee9737bbe9bc1182b20349daff05a115c1264c7bfbfa23e32'
+const GOLDEN_HASH = 'bebedcd98c162933c77c7651153a7364fdbebf3490d86be19ee06132669131dd'
 
 /** Hash of the 40 golden games, with both teams given `coaching` (or none). */
 function goldenHash(coaching: MatchTeam['coaching']): string {
@@ -43,22 +44,17 @@ function goldenHash(coaching: MatchTeam['coaching']): string {
   return hash.digest('hex')
 }
 
-describe('balanced-system identity', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
-  it('reproduces the pre-systems engine byte for byte without coaching', () => {
-    expect(goldenHash(undefined)).toBe(PRE_SYSTEMS_HASH)
+describe('golden games', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
+  it('reproduces the recorded games byte for byte without coaching', () => {
+    expect(goldenHash(undefined)).toBe(GOLDEN_HASH)
   })
 
-  it('reproduces it byte for byte with the balanced system and zero execution edges', () => {
-    expect(goldenHash(systemOnly(BALANCED_SYSTEM))).toBe(PRE_SYSTEMS_HASH)
+  it('the balanced system with zero execution edges is the same as no coaching', () => {
+    expect(goldenHash(systemOnly(BALANCED_SYSTEM))).toBe(GOLDEN_HASH)
   })
 
-  it('reproduces it when only the rotation settings change (no engine effect yet)', () => {
-    const rotation = {
-      ...BALANCED_SYSTEM,
-      rotationDepth: 'deep' as const,
-      starterMinutes: 'share' as const,
-    }
-    expect(goldenHash(systemOnly(rotation))).toBe(PRE_SYSTEMS_HASH)
+  it('is deterministic: the same seed gives the same games twice', () => {
+    expect(goldenHash(undefined)).toBe(goldenHash(undefined))
   })
 })
 
@@ -167,12 +163,18 @@ describe('system settings move their levers', { timeout: SLOW_TEST_TIMEOUT_MS },
       seriesTotal(rs, 'home', 'assists') / seriesTotal(rs, 'home', 'fieldGoalsMade')
     const motion = series({ ballMovement: 'motion' })
     const iso = series({ ballMovement: 'isolation' })
-    expect(assistRate(motion)).toBeGreaterThan(assistRate(base) + 0.02)
+    // The assist rate sits near .61 league-wide, so motion has little room to rise: +0.01 is the
+    // measurable effect over 60 games (it was +0.02 before rotations spread the minutes).
+    expect(assistRate(motion)).toBeGreaterThan(assistRate(base) + 0.01)
     expect(assistRate(iso)).toBeLessThan(assistRate(base) - 0.02)
     expect(topShooterShare(iso, 'home')).toBeGreaterThan(topShooterShare(motion, 'home'))
-    // The price of motion: more bad passes.
-    expect(seriesTotal(motion, 'home', 'turnovers')).toBeGreaterThan(
-      seriesTotal(iso, 'home', 'turnovers'),
+    // The price of motion: more bad passes. The effect is small (about 2-3%), so it needs a longer
+    // series than the other checks to stand out from game-to-game noise now that rotations
+    // spread the minutes.
+    const longMotion = playSeries(runningSystem(TEAM, { ballMovement: 'motion' }), OPPONENT, 300)
+    const longIso = playSeries(runningSystem(TEAM, { ballMovement: 'isolation' }), OPPONENT, 300)
+    expect(seriesTotal(longMotion, 'home', 'turnovers')).toBeGreaterThan(
+      seriesTotal(longIso, 'home', 'turnovers'),
     )
   })
 
@@ -272,8 +274,11 @@ describe('systems keep the engine deterministic and CA-blind', () => {
       })),
     }
     const away = runningSystem(OPPONENT, archetypeSystem('starDriven'))
-    expect(simulateGame({ home: scrambled, away, rules: PRO_RULES, seed: 4 })).toEqual(
-      simulateGame({ home, away, rules: PRO_RULES, seed: 4 }),
-    )
+    // The coach may use CA when choosing minutes, so pin the rotation: same lineups and minutes
+    // must give the same game whatever the hidden CA/Potential say.
+    const rotation = buildRotationPlan(home.roster, undefined, system)
+    expect(
+      simulateGame({ home: { ...scrambled, rotation }, away, rules: PRO_RULES, seed: 4 }),
+    ).toEqual(simulateGame({ home: { ...home, rotation }, away, rules: PRO_RULES, seed: 4 }))
   })
 })
