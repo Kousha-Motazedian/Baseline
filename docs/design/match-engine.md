@@ -5,9 +5,9 @@ calibration constants are all in `src/core/match/tuning.ts`.
 
 **Status:** prototype, round 3 (full foul model, ball path, putbacks, fast breaks, late-game
 score effects, tie-seeking end-game play, separate offensive/defensive form, and two
-**stopgaps** — foul-trouble benching and blowout easing — that stand in for rotations),
-calibrated against modern pro-league averages. Expect large changes once tactics, rotations and
-fatigue exist.
+fatigue and coach-driven substitutions, see [rotations.md](rotations.md)), calibrated against
+modern pro-league averages. The former stopgaps (foul-trouble benching, blowout easing) are gone:
+the coach's rotation does their job.
 
 ## Engine flow
 
@@ -15,7 +15,7 @@ fatigue exist.
 simulateGame (game.ts)
 └─ periods: 4 regulation, then overtimes until not tied; team fouls reset per period (teamFouls.ts)
    └─ possessions, alternating between teams until the period clock hits 0
-      │  each starts with the STOPGAP foul-trouble bench check (foulTrouble.ts), then half-court,
+      │  each starts with the coaches' substitution check (substitutions.ts), then half-court,
       │  or as a fast break if the last possession handed it over
       └─ actions (possession.ts): a chain until the possession ends
          0. intentional foul?  the defense fouls on purpose late (scoreEffects.ts), else
@@ -84,8 +84,8 @@ assists.
 
 Every defensive personal foul (shooting, non-shooting, intentional) counts as a **team foul**;
 offensive fouls count only where `offensiveFoulsCountAsTeamFouls` is set (FIBA). `commitFoul`
-(fouls.ts) logs the foul, then any foul-out, then any technical, then any STOPGAP foul-trouble
-substitution (a foul is a dead ball).
+(fouls.ts) logs the foul, then any foul-out, then any technical, then any substitution
+(the coach's call) (a foul is a dead ball).
 
 - **Shooting fouls:** shooter Aggression vs. the contest's Discipline (on-ball and help blended by
   contest share). Base rates were lowered now that other fouls create free-throw trips: drive
@@ -109,11 +109,11 @@ substitution (a foul is a dead ball).
   `technicalsCountTowardFoulLimit` (FIBA). They are not team fouls (simplification).
 - **Intentional fouls:** see score effects. They never roll a technical (nobody argues a foul
   his own team chose to commit).
-- **Foul-trouble caution:** a player one foul from disqualification commits every kind of foul
-  (shooting, non-shooting, offensive) at `FOUL_TROUBLE_CAUTION` = 2 log-odds lower (≈ 1/6 the
+- **Foul caution:** a player one foul from disqualification commits every kind of foul
+  (shooting, non-shooting, offensive) at `FOUL_CAUTION` = 2 log-odds lower (≈ 1/6 the
   rate): he stops reaching, contests softly and doesn't charge in. On shots the caution is
-  blended by contest share like Discipline. Part of the foul-trouble stopgap (see below): late in
-  the game nobody can be benched, so without it starters on 5 fouls fouled out ~1 time in 3.
+  blended by contest share like Discipline. Late in
+  close games nobody can be benched, so without it starters on 5 fouls fouled out often.
 
 ### Team fouls and the bonus (`LeagueRules`)
 
@@ -137,13 +137,9 @@ offensive ones included, is a team foul.
 
 ### Disqualification (lineup.ts)
 
-Each lineup slot has a **regular** (`TeamState.regulars`: the starter, or whoever replaced him
-after a disqualification); the player actually in the slot is either the regular or a sub
-filling in while he sits with fouls. A fouled-out or ejected player is replaced by the best
-eligible bench player: first the slot's own regular if he's free to play, then a reserve not in
-foul trouble, then the slot's regular even in foul trouble, then a reserve in foul trouble, and
-last another slot's resting regular (his slot is then re-assigned); closest height breaks ties.
-A regular's replacement becomes the slot's new regular. With nobody left:
+The coach (tactics/rotation.ts, `chooseReplacement`) picks the replacement from his depth chart;
+the engine never fields a disqualified or on-court player (if the coach names an invalid one, the
+first legal bench player in roster order steps in). With nobody left:
 
 - **Ejected (two technicals):** he always leaves the floor and the team plays short-handed,
   under every rule set.
@@ -156,26 +152,36 @@ Short-handed: matchups wrap, the extra offensive player gives the offense +0.25 
 on shots and +0.3 per man on rebounds. A team is never reduced below one player (the last one
 stays on, pro-style).
 
-### STOPGAP: foul-trouble benching (foulTrouble.ts)
+### Foul caution (fouls.ts)
 
-Until rotations exist, starters play every minute they can, so they used to foul out 2.5 times
-a game (real ≈ 0.1–0.3). As a stopgap, a player **sits** once his fouls reach
-`personalFoulLimit − margin`, margin by period `FOUL_TROUBLE_MARGINS` = 4, 3, 2, 1 (never fewer
-than 2 fouls): pro 2 in Q1, 3 in Q2, 4 in Q3, 5 in Q4 — until the last 5:00 of regulation
-(`FOUL_TROUBLE_RELEASE_SECONDS`); nobody sits in the last 5:00 or in overtime. FIBA (5-foul
-limit): 2, 2, 3, 4.
+A player one foul from disqualification plays it safe: `foulCautionEdge` (−`FOUL_CAUTION` = −1.6
+log-odds) on his chance to commit any foul. It is player behaviour, so it stays whoever is on
+the floor. Foul-trouble _benching_ is now the coach's call (rotations.md section 3).
 
-- The check runs at every dead ball the engine knows: each possession start (both teams), right
-  after each foul, and right after a technical that counts as a personal foul (FIBA).
-- A sitting player is replaced by the closest-height **reserve** who is free to play (not
-  another slot's regular, not in foul trouble himself). No such reserve → he plays on.
-- The regular **returns** at the first check where he is free again: the next period's
-  threshold, or the late-game release. A sub who gets into foul trouble is swapped for another
-  reserve.
-- Together with the foul-trouble caution above it brings foul-outs to ≈ 0.25 per game.
+## Fatigue and substitutions (fatigue.ts, substitutions.ts)
 
-**Replace it** with the coach's rotation and foul-trouble settings (tactics/) once rotations
-exist, then delete foulTrouble.ts.
+Design: [rotations.md](rotations.md) sections 1 and 3. Each player has **energy** 0–100 in
+`TeamState.energy` (100 at tip-off, not in the box score).
+
+- **Drain** on the floor: `ENERGY_DRAIN_PER_SECOND` (0.07/s at Stamina 1) × (1 → 0.5 linearly
+  from Stamina 1 to 20) × the team's system factor (fast pace +8%, push transition +5%,
+  aggressive pressure +8%). An average player loses ≈ 3.2 per minute (calibrated: 0.10 made starters tire into too many bench minutes).
+- **Recovery**: bench 0.15/s (`ENERGY_RECOVERY_PER_SECOND`, above any drain), +8 at each quarter
+  break/before overtime, +25 at halftime, capped at 100.
+- **Effect**: `fatigueEdge` joins `personalEdge` (so shots, contests, ball security, both ends):
+  `−1.2 · share · missing²` with `missing = (100 − energy)/100`; `share` = 40% flat + 60% effort,
+  the effort part scaled by Hustle (×0.5 at 20, ×1.5 at 1). Rebounds use the lineups' average
+  fatigue edge difference. Fresh = 0; energy 80 ≈ −0.05, 50 ≈ −0.3, 20 ≈ −0.8 (average Hustle).
+- **Substitutions**: at every possession start (both teams, home first) and right after each foul
+  (fouling team; also after an FIBA technical-as-personal-foul) `applySubstitutions` builds a
+  `SubstitutionContext` (energy, minutes, fouls, lead, `leadSafety`, plan, coach), calls the
+  coach's `decideSubstitutions(ctx, rng)` and applies each valid substitution, logged as
+  "X checks in for Y". Invalid ones (bad slot, disqualified, already on the floor, duplicates)
+  are ignored. The opening five are `plan.starters` in slot order; a missing plan is built with
+  `buildRotationPlan` from the roster and the team's system (`MatchTeam.rotation`,
+  `rotationCoach` override it).
+- **Lead safety** (`leadSafety.ts`) is the lead in SDs of the remaining swing:
+  `lead / (2 · √(minutes left, ≥ 1))`; the coach uses it to decide garbage time.
 
 ## Putbacks
 
@@ -282,35 +288,6 @@ the bonus (pro: the 2nd foul in the last 2:00 at the latest), otherwise a side-o
   −0.3 log-odds (`KEYED_DEFENSE_EDGE`): the defense knows what's coming and sells out to stop it
   (real last-possession shots go in ~30–35%). It helps ties survive to overtime.
 
-## STOPGAP: blowout easing (blowout.ts)
-
-Real games don't keep spreading out once they're decided: starters rest, the leader eases off,
-garbage-time lineups play. Without rotations the engine had none of that, and evenly matched
-teams finished with a margin SD of ~18–20 points (target 12–14, see Calibration). As a stopgap, a team with a
-big, safe **second-half** lead eases off: every one of its players gets `easeOffEdge` (zero or
-negative log-odds) added to his personal edge, at **both ends** (shots, contests, ball security
-and ball pressure). It changes effort only, never pace.
-
-```
-safety = lead / (2.0 · √(regulation minutes left, at least 1))   (the lead in SDs of the swing to come)
-ease   = −0.17 · smooth(lead: 4 → 15) · smooth(safety: 0.5 → 2.5)   (BLOWOUT_MAX_EASE = 0.17)
-```
-
-`smooth` is a smoothstep (0 below the start, 1 above the end, an S-curve between), so there is
-no cliff at any score or time. The size ramp starts low (4 points) on purpose: with the safety
-ramp it only bites late (a 6-point lead is "safe" with about a minute left), and that late
-easing pulls moderate leads back toward close games, which added a few tenths of a point of
-overtime rate over starting at 8. Both ramps must be on: a 6-point lead with a minute left is
-"safe" but nobody eases off much in a 6-point game, and a 25-point lead early in Q3 is still
-played hard for a while. The safety ramp starts at 0.5 (round 3 first used 1): the easing then
-reaches more mid-sized second-half leads, which lowered the margin spread and raised overtime a
-little. Never in the first half or overtime (starting it in Q2 was tried: lower SD, no clear
-overtime gain, and the brief asked for second-half leads). Because it applies at both ends,
-it moves the margin without moving league scoring.
-
-**Replace it** once rotations and tactics exist: then the bench should actually play garbage
-time (its lower ratings do the work) and blowout.ts should be deleted.
-
 ## Play-by-play convention
 
 Entries are in **chronological order** (a fouled make: the shot, then the foul, then the free
@@ -336,7 +313,7 @@ Composite skills (`ratings.ts`) blend several 1–20 attributes for each situati
 offense = Driving 0.45 + Finishing 0.35 + Quickness 0.2.
 
 Free throws are the exception: uncontested, so FT% is linear in the Free Throw rating
-(rating 1 ≈ 61%, average 78%, 20 ≈ 95%).
+(rating 1 ≈ 61.5%, average 78.6%, 20 ≈ 95.7%).
 
 ## Offensive-bias fixes
 
@@ -375,7 +352,7 @@ The `exp()` form matters: adding the same amount to every rating multiplies ever
 by the same factor, so a uniformly better league keeps the same shot mix.
 
 Selection is two-step: first the player, weighted by their total option weight raised to
-`USAGE_EXPONENT = 0.6`, then the play type within that player. The compression stops one
+`USAGE_EXPONENT = 0.74` (0.6 before the rotations calibration), then the play type within that player. The compression stops one
 player who is a few points better than his teammates from taking 50+ shots a game (real defenses
 load up on stars; teammates need touches). It keeps the invariance property.
 
@@ -390,10 +367,10 @@ defender and rim protector contribute
 form/composure in the same proportion as their share of the contest (`situation.ts`). On
 turnovers both the handler's (offensive) and the defender's (defensive) form apply.
 
-**Consistency (form):** normal-shaped, `N(0, sd)` clamped at ±2.5 sd (mean stays 0), with
-`sd = 0.03 + 0.27 · ((20 − Consistency) / 19)²`: Consistency 1 → 0.30, average 10.5 → ≈ 0.10,
-20 → 0.03. The convex curve is deliberate: a Consistency-1 player swings ~10x more than a
-Consistency-20 one (a 36% shooter has 29% or 43% days at ±1 SD), while the many players near
+**Consistency (form):** normal-shaped, `N(0, sd)` clamped at ±2 sd (mean stays 0), with
+`sd = 0.03 + 0.17 · ((20 − Consistency) / 19)²`: Consistency 1 → 0.20, average 10.5 → ≈ 0.07,
+20 → 0.03 (the rotations step narrowed it from 0.30 / ±2.5 sd). The convex curve is deliberate: a Consistency-1 player swings ~7x more than a
+Consistency-20 one (a 36% shooter has 31% or 41% days at ±1 SD), while the many players near
 average stay close to the old uniform roll's spread. Form is independent per player, so a wide
 spread for the average player adds team-level noise and inflates the final-margin spread (a
 linear curve measured +1.3 points of margin SD). Splitting the single roll (which moved a
@@ -521,6 +498,8 @@ teams. Attribute groups are defined in `src/core/players/attributes.ts`:
 | Offense : defense ratio                 | 1.35   | 1.50   | 1.30   | 1.41   | 1.38    | 1.3–1.5 (avg **1.39**) |
 | League +3 everywhere vs. average league | +1.53  | +1.54  | +1.18  | +1.68  | +1.59   | within ±2              |
 
+_(Round-3 engine, before rotations. Current values: ratio 1.37 / 1.44 / 1.41 for seeds 1-3, see "Calibration with rotations" below.)_
+
 Round 2: gains +16.6 to +17.3 (offense) and +11.3 to +14.0 (defense), ratios 1.42 / 1.23 / 1.48
 (seed 7: 1.46). Both gains shrank by about a quarter in round 3 because the blowout easing makes
 a better team ease off once it's comfortably ahead, so it wins by less (as real better teams
@@ -564,12 +543,11 @@ unrealistic rules.
 
 ## Known simplifications
 
-- **No rotations or fatigue.** Starters play the whole game; the bench only enters on a foul-out,
-  an ejection or (STOPGAP) foul trouble. No garbage time: the STOPGAP blowout easing stands in
-  for it.
+- **Fatigue is per game only** (no carry-over between games); only the fouling team subs after a
+  foul, so a fouled shooter is never subbed before his free throws.
 - **Slot-for-slot matchups**; no custom defensive assignments, switching or double teams beyond
   the rim-protector help.
-- **Whole-game score effects** are limited to the STOPGAP blowout easing; the trailing team
+- **Whole-game score effects** are garbage-time substitutions only; the trailing team
   doesn't press or change tactics before the last few minutes.
 - **The clock runs for the whole action before its outcome is resolved**, including turnovers
   and non-shooting fouls that would really end it earlier; the side-out that follows is short to
@@ -602,3 +580,76 @@ unrealistic rules.
 - **Hidden attributes** are random around average. Current Ability is a **placeholder** derived
   from the mean visible rating until the CA budget system exists.
 - **Teams:** 10 players; starters G, G, W, W, B; bench 1.5 rating points weaker.
+
+## Golden hash (rotations step)
+
+`tests/core/match/systems.test.ts` records a SHA-256 of 40 fixed-seed games. Rotations change
+every game, so the pre-rotations hash (`730b3188…`, the pre-systems engine) is retired and a
+new one was recorded after this change (with the temporary tactics stub; **re-record after the
+real rotation code is merged**). The byte-identity guarantee with the old engine ends here; a
+same-seed determinism test remains.
+
+## Calibration with rotations (final numbers)
+
+`npm run sim:batch -- --games 2000 --balance --seed N` (generated league teams, coaches off; the
+balance tests use at least 6,000 paired games so the offense:defense ratio is not seed noise).
+Everything passes except the known overtime gap (0.032-0.043 vs. 0.05-0.07), the next step's job
+(timeouts and end-game decisions).
+
+| Metric                                       | Seed 1             | Seed 2             | Seed 3             | `--league-systems` | Target                  |
+| -------------------------------------------- | ------------------ | ------------------ | ------------------ | ------------------ | ----------------------- |
+| Starter minutes (team avg)                   | 31.2               | 30.8               | 30.9               | 30.7               | 30-33                   |
+| Most minutes on a team                       | 35.2               | 34.7               | 34.9               | 34.6               | 34-38                   |
+| Players with 10+ min / team                  | 9.05               | 9.12               | 9.08               | 9.13               | 8-10                    |
+| Team top scorer (pts)                        | 27.3               | 26.9               | 27.1               | 26.7               | 26-29                   |
+| Games with a 40+ scorer                      | 0.119              | 0.110              | 0.121              | 0.108              | 0.10-0.16               |
+| Games with a 50+ scorer                      | 0.017              | 0.017              | 0.015              | 0.013              | <= 0.02                 |
+| Team rebound / assist leader                 | 11.3 / 8.6         | 11.2 / 8.6         | 11.2 / 8.6         | 11.0 / 8.6         | 10-12 / 7-9             |
+| Avg margin of victory (league games)         | 12.02              | 12.46              | 12.35              | 12.42              | 11.9-12.9 (real 12.4)   |
+| Games decided by 20+                         | 0.184              | 0.202              | 0.196              | 0.196              | 0.17-0.22 (real 0.195)  |
+| League-game margin SD                        | 15.4               | 15.8               | 15.6               | 15.7               | 14.5-16.5 (real ~15.5)  |
+| Identical teams: margin SD                   | 15.2               | 15.3               | 15.1               | 15.2               | derived (below)         |
+| Generator quality spread (SD)                | 3.84               | 3.16               | 3.96               | 4.09               | report                  |
+| FT% / ORB% / steals                          | .776 / .232 / 7.16 | .777 / .232 / 7.16 | .778 / .233 / 7.24 | .778 / .234 / 7.70 | .77-.79 / .23-.27 / 7-8 |
+| Offense : defense ratio (6,000 paired games) | 1.37               | 1.44               | 1.41               | -                  | 1.30-1.50               |
+| League +3 everywhere shift (pts/100)         | +0.36              | +0.49              | +0.32              | -                  | within +-2              |
+
+**League-game margin targets (user decision, real 2021-22 to 2025-26 seasons).** Average margin of
+victory 12.4 and 19.5% of games decided by 20+. Average |margin| is about 0.8 x the margin SD for
+a roughly normal margin, so the real league-game SD is about 15.5; the target range is 14.5-16.5.
+
+**Identical-teams margin SD, derived rather than chosen.** Real league games include the spread
+in team quality; identical teams do not, so identical SD = sqrt(league SD^2 - quality spread^2).
+Real NBA quality spread (SD of expected margins between teams) is about 5-6 points, which would
+put identical teams near 14.4-14.7. Our generator's measured spread is smaller (3.2-4.1 over
+seeds, from 400 pairs x 6 games, the variance of pair means minus the identical-teams noise), so
+batch-sim derives the target from the measured spread: 14.5/16.5 through sqrt(x^2 - spread^2)
+gives about 14.0-16.0 here, and the old fixed 12-14 range is retired (it dated from an older,
+lower real margin spread and would now require a league-game SD of about 14). The gap between
+our spread (about 3.7) and the real one (5-6) is a generator question (team-quality spread),
+recorded in TODO.md; closing it would move the identical-teams target down to the ~14.5 range.
+
+What was tuned (`tuning.ts`, `tactics/rotationTuning.ts`):
+
+- **Fatigue drain** 0.10 -> 0.07/s: starters were pulled early by tiredness, not by the plan.
+- **Plan starter minutes** 35/32/29 -> 40/37/34 (ride / balanced / share). Rest, foul trouble and
+  garbage time take 4-7 minutes off the plan, so the plan asks for more than the realised 30-33.
+- **Garbage time** (`GARBAGE_TRAILING_FACTOR` 1.17): the leader rests his starters at a 12-point
+  lead, the trailing coach only concedes at 1.17x that lead and safety. 1.5x gave a league average
+  margin of 10.6 with 12% blowouts; 1.2 gave 12.3 / 20%; the final value keeps all seeds in range.
+- **Heavy-usage damping** (`HEAVY_USAGE_SHOTS` 19, `HEAVY_USAGE_SCALE` 8, `playSelection.ts`): a
+  player's shot weight falls once he has taken many shots (the defense adjusts to a hot scorer).
+  It trims the 50-point tail (50+ games were 0.02-0.025 with a 40+ rate of ~0.11) without
+  touching ordinary star nights, so `USAGE_EXPONENT` could rise 0.6 -> 0.74 to lift 40+ games.
+- **`OFFENSE_EDGE_WEIGHT`** 0.75 -> 0.70 (defense stays 0.75): the offense:defense ratio sat at
+  1.50-1.61 across seeds; it is now ~1.4, for a league-wide +0.4 pts/100 shift.
+- **Foul caution** 2 -> 1.6 and **`BASE_FREE_THROW`** 0.78 -> 0.786 (foul-outs and FT% were just
+  under their floors).
+- **Form spread** narrowed (SD at Consistency 1: 0.3 -> 0.2, clamp 2.5 -> 2 SDs): trims hot
+  shooting nights; the margin SD barely moves (form only ever contributed ~0.6 points of it).
+- Tried and dropped: a higher fatigue penalty (no effect on the 50+ tail).
+
+Performance: the plan's lineup search precomputes values and slot costs, and the coach's
+per-decision utilities are cached; a generated-team game costs about 20 ms. The unit-test fixtures
+(`withRosterStarters` in `tests/helpers/gameState.ts`) keep the legacy "first five roster players
+start" lineup for single-step tests.

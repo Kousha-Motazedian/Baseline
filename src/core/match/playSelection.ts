@@ -6,8 +6,11 @@ import type { Contesters } from './contest.ts'
 import { contestSkill, findContesters } from './contest.ts'
 import { offensiveSkill } from './ratings.ts'
 import type { TeamState } from './state.ts'
+import { lineOf } from './state.ts'
 import {
   BASE_PLAY_SHARE,
+  HEAVY_USAGE_SCALE,
+  HEAVY_USAGE_SHOTS,
   PLAY_FIT_DEFENSE_WEIGHT,
   PLAY_FIT_OFFENSE_WEIGHT,
   USAGE_EXPONENT,
@@ -92,6 +95,20 @@ function totalWeight(choices: readonly PlayChoice[], options: PlayOptions): numb
 }
 
 /**
+ * Weight multiplier (1 or less) for a player who has already taken a lot of shots this game: the
+ * defense adjusts to a hot scorer (face-guarding, doubles) and teammates demand touches, so the
+ * 35th shot is harder to get than the 15th. It reads the player's field goal attempts so far in
+ * this game (the live box score line), not his season or his rating. It trims the very top of the scoring distribution
+ * (50-point nights) without touching ordinary 30-point stars.
+ */
+function heavyUsageDamping(offense: TeamState, choices: readonly PlayChoice[]): number {
+  const player = choices[0]?.player
+  if (!player) return 1
+  const shots = lineOf(offense, player).fieldGoalsAttempted
+  return 1 / (1 + Math.max(0, shots - HEAVY_USAGE_SHOTS) / HEAVY_USAGE_SCALE)
+}
+
+/**
  * Chooses the shooter and play type for one action.
  * Two steps: first who gets the shot, then which play they run. The player step compresses
  * their total weight (USAGE_EXPONENT < 1) because real teams can't funnel every shot to their
@@ -107,6 +124,10 @@ export function choosePlay(
 ): PlayChoice {
   const byPlayer = offense.onCourt.map((player) => playerOptions(offense, defense, player, options))
   const exponent = options.usageExponent ?? USAGE_EXPONENT
-  const chosen = pickWeighted(rng, byPlayer, (c) => totalWeight(c, options) ** exponent)
+  const chosen = pickWeighted(
+    rng,
+    byPlayer,
+    (c) => totalWeight(c, options) ** exponent * heavyUsageDamping(offense, c),
+  )
   return pickWeighted(rng, chosen, (o) => optionWeight(o, options))
 }

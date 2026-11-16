@@ -18,7 +18,7 @@ import {
 /** A player's chance to make a free throw; in clutch time Composure moves it up or down. */
 export function freeThrowChance(shooter: Player, clutch = false): number {
   // Linear in the rating (not log-odds): free throws are uncontested, so skill maps directly to %.
-  // Rating 1 ≈ 61%, average ≈ 78%, rating 20 ≈ 95%.
+  // Rating 1 ≈ 61.5%, average ≈ 78.6%, rating 20 ≈ 95.7%.
   const rating = shooter.attributes.freeThrow
   const skill = BASE_FREE_THROW + (rating - AVERAGE_RATING) * FREE_THROW_PER_RATING_POINT
   // Pressure is symmetric around average Composure, so clutch time doesn't shift league FT%.

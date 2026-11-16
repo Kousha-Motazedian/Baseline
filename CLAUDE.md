@@ -61,6 +61,7 @@ Game design decisions live in `docs/design/`. Read the relevant doc before imple
 - `docs/design/match-engine.md` — match engine flow, log-odds edge model, bias fixes, calibration targets and results
 - `docs/design/player-roles.md` — position ratings, roles, Current Ability formula and tier calibration, position-based generation
 - `docs/design/coaches.md` — head coach attributes, playing styles and systems, role fit, override penalty, hiring/firing and the coach cap
+- `docs/design/rotations.md` — fatigue, the coach's rotation plan and substitutions, GM rotation takeover, player-level box-score targets
 
 ## Code style (applies to the entire codebase, not just the engine)
 
@@ -80,19 +81,30 @@ Game design decisions live in `docs/design/`. Read the relevant doc before imple
 - Every change uses developer agents and then a tester agent, run in order:
   1. **Two developer agents** (Sonnet model): they implement the change in parallel, following this file and the relevant design docs.
      - The work is split into two independent parts with clear file ownership.
-     - Each developer works in its own git worktree so they never edit the same files.
-     - When both finish, their work is merged and checked (`npm test`, typecheck, lint) before the tester starts.
+     - Each developer works in its own git worktree, on its own dev branch, so they never edit the same files.
+     - Each part is tested and merged into the feature branch on its own (see Branching below).
      - If a change can't be split sensibly, one developer does it and the other reviews or takes the next task.
   2. **Tester agent** (Sonnet model): writes/updates tests, verifies the change independently (incl. batch-sim/balance checks for engine changes), and reports issues. It does not edit `src/`; fixes go back through the developer agents.
 - **Progress reporting:** every developer agent messages the main session whenever it finishes a task or starts a new one, saying which task it just finished, which task it's working on now, and what's left. The main session uses these messages for the user's progress updates.
-- **Commits:** always ask the user before committing to a branch, every time, regardless of review results.
-- **Pushing:** only when the user says to push to a branch. At that point (and not before), run a **final review agent on the Fable model**. It:
-  1. Looks through all the changed code one last time and reports any issues it finds.
-  2. Cleans up the code (style, dead code, comments, consistency with this file).
-  3. Performs final testing: `npm test`, `npm run typecheck`, `npm run lint`, `npx prettier --check .`, plus `npm run sim:batch` for engine changes.
+- **Usage limits:** if a developer, tester or review agent is stopped by a usage limit, resume it automatically once the limit resets, without asking, so it picks up where it left off.
+- **Branching:**
+  - `main` is the game. Never commit or push to `main` directly; it only changes through a feature PR.
+  - Each feature (one system or step, e.g. rotations) gets a **feature branch** off `main`: `feature/<name>`.
+  - Each developer's part of the feature gets a **dev branch** off the feature branch: `dev/<name>-<part>` (e.g. `dev/rotations-engine`, `dev/rotations-tactics`), worked on in its own worktree.
+- **Dev branch → feature branch** (no user approval needed):
+  1. The developer commits its work on its dev branch and pushes it.
+  2. The tester verifies that part. Fixes go back to the developer on the same dev branch.
+  3. Once `npm test`, typecheck, lint and the tester pass, the dev branch is merged into the feature branch with git (no PR), and the feature branch is pushed.
+- **Feature branch → `main`** (when the feature is done):
+  1. The tester runs once more on the finished feature branch.
+  2. A **final review agent on the Fable model** checks the whole feature. Fable only reviews feature → `main` merges, never dev → feature merges. It:
+     1. Looks through all the changed code one last time and reports any issues it finds.
+     2. Cleans up the code (style, dead code, comments, consistency with this file).
+     3. Performs final testing: `npm test`, `npm run typecheck`, `npm run lint`, `npx prettier --check .`, plus `npm run sim:batch` for engine changes.
+  3. Findings are triaged (below), fixes are made on the feature branch, and medium/high fixes are re-reviewed by Fable.
+  4. **Ask the user** before committing the review fixes and before opening the PR into `main`; then open the PR, report any issues on it, and the user merges it.
 - **Triaging Fable findings** (each finding gets a severity: low, medium, high):
   - **Already in `docs/TODO.md`:** ignore it; it's already tracked.
-  - **Low:** add it to `docs/TODO.md` automatically. It doesn't need fixing now and doesn't block the push.
-  - **Medium or high:** notify the user so they can triage it (fix now, defer to `docs/TODO.md`, or accept). Don't push until every medium/high finding has been triaged and any fixes chosen are made and re-reviewed.
-- If the Fable review finds no medium/high issues, push to the branch (asking before any commit the push needs, including one for new `docs/TODO.md` entries). Never commit or push to `main` directly.
+  - **Low:** add it to `docs/TODO.md` automatically. It doesn't need fixing now and doesn't block the PR.
+  - **Medium or high:** notify the user so they can triage it (fix now, defer to `docs/TODO.md`, or accept). Don't open the PR until every medium/high finding has been triaged and any fixes chosen are made and re-reviewed.
 - Record deferred fixes and known follow-ups in `docs/TODO.md`.

@@ -2,8 +2,8 @@ import type { Player } from '../players/types.ts'
 import { normalizeRating } from '../shared/probability.ts'
 import type { Contesters } from './contest.ts'
 import { blendByHelp } from './contest.ts'
-import { easeOffEdge } from './blowout.ts'
 import { coachingEdge } from './coaching.ts'
+import { fatigueEdge } from './fatigue.ts'
 import type { CourtEnd, GameState, TeamState } from './state.ts'
 import { isClutch } from './state.ts'
 import {
@@ -16,8 +16,7 @@ import {
 import type { PlayType } from './types.ts'
 
 /**
- * Situational modifiers (game-day form, clutch composure, the road crowd and easing off in a
- * blowout). They apply to BOTH ends of the floor: an offensive player's good day is offset by a
+ * Situational modifiers (game-day form, clutch composure, the road crowd and fatigue). They apply to BOTH ends of the floor: an offensive player's good day is offset by a
  * defender's good day, so neither side gets a systematic boost from these effects.
  */
 
@@ -47,7 +46,7 @@ export function roadEdge(team: TeamState, player: Player): number {
 }
 
 /**
- * Form, clutch composure, the road crowd, blowout easing and coaching (execution plus system fit)
+ * Form, clutch composure, the road crowd, fatigue and coaching (execution plus system fit)
  * for one player at one end of the floor: everything about today's situation. Coaching is added
  * last, so a team without coaching (edge exactly 0) gets bit-for-bit the old sum.
  */
@@ -61,7 +60,7 @@ export function personalEdge(
     formEdge(team, player, end) +
     clutchEdge(game, player) +
     roadEdge(team, player) +
-    easeOffEdge(game, team) +
+    fatigueEdge(team, player) +
     coachingEdge(team.tactics, player, end)
   )
 }

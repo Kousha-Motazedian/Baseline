@@ -107,8 +107,9 @@ describe('assists', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
       )
     const guardShare =
       guards.reduce((s, id) => s + assists(id), 0) / seriesTotal(GAMES, 'home', 'assists')
-    // Two of five starters, but well over 40% of the assists.
-    expect(guardShare).toBeGreaterThan(0.5)
+    // Two of nine rotation players (who now share the minutes with the bench), but a third or
+    // more of the assists (measured 0.40 with the stub rotation).
+    expect(guardShare).toBeGreaterThan(0.33)
   })
 })
 

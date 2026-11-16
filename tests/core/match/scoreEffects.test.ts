@@ -92,29 +92,45 @@ describe('intentional fouls', () => {
         seed,
       })
       simulatePossession(game, game.home, game.away)
-      const trip = game.playByPlay.find((e) => / free throw 1 of 2$/.test(e.text))
-      if (trip) expect(trip.text).toMatch(/^Pbrick /)
+      const tripIndex = game.playByPlay.findIndex((e) => / free throw 1 of 2$/.test(e.text))
+      // Only a trip that follows an intentional foul says who the defense targeted: with
+      // rotations the exact rng stream (and so the clock) shifts, and the bonus can also come from
+      // a natural foul on the fifth team foul.
+      const trip = game.playByPlay[tripIndex]
+      const targeted = game.playByPlay[tripIndex - 1]?.text.startsWith('Intentional foul')
+      if (trip && targeted) expect(trip.text).toMatch(/^Pbrick /)
       expect(game.home.lines.get('benchBrick')?.freeThrowsAttempted).toBe(0)
     }
   })
 
   it('need four free fouls before the bonus under FIBA (no late-window rule)', () => {
-    const game = gameAt({
-      period: 4,
-      clock: 28,
-      homeLead: 6,
-      home: teamWithBrickLayer(),
-      rules: FIBA_RULES,
-    })
-    simulatePossession(game, game.home, game.away)
-    // Ignore technicals and foul-outs: one defender takes every intentional foul, so with FIBA's
-    // 5-foul limit he can foul out (or pick up a technical) during the sequence.
-    const texts = game.playByPlay
-      .map((e) => e.text)
-      .filter((t) => !/technical|Technical|fouls out/.test(t))
-    const firstFreeThrow = texts.findIndex((t) => / free throw 1 of 2$/.test(t))
-    expect(firstFreeThrow).toBe(5)
-    expect(texts.slice(0, 5).every((t) => t.startsWith('Intentional foul'))).toBe(true)
+    let fullSequences = 0
+    for (let seed = 0; seed < 30; seed++) {
+      const game = gameAt({
+        period: 4,
+        clock: 28,
+        homeLead: 6,
+        home: teamWithBrickLayer(),
+        rules: FIBA_RULES,
+        seed,
+      })
+      simulatePossession(game, game.home, game.away)
+      // Ignore technicals and foul-outs: one defender takes every intentional foul, so with
+      // FIBA's 5-foul limit he can foul out (or pick up a technical) during the sequence.
+      const texts = game.playByPlay
+        .map((e) => e.text)
+        .filter((t) => !/technical|Technical|fouls out/.test(t))
+      const firstFreeThrow = texts.findIndex((t) => / free throw 1 of 2$/.test(t))
+      // Four fouls never shoot; the fifth team foul does. The clock (which depends on the rng
+      // stream, shifted by the coaches' substitution draws) can run out before the sequence
+      // finishes, so a trip is only required to come no earlier than index 5.
+      if (firstFreeThrow !== -1) expect(firstFreeThrow).toBeGreaterThanOrEqual(5)
+      if (firstFreeThrow === 5) {
+        fullSequences++
+        expect(texts.slice(0, 4).every((t) => t.startsWith('Intentional foul'))).toBe(true)
+      }
+    }
+    expect(fullSequences).toBeGreaterThan(0)
   })
 
   it('never come from the leading team, before the last 30 s, or beyond the shrinking cap', () => {

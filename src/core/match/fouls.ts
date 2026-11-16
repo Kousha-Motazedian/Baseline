@@ -1,7 +1,7 @@
 import type { Player } from '../players/types.ts'
 import { adjustProbability, normalizeRating } from '../shared/probability.ts'
-import { sitsForFouls, updateFoulTroubleBench } from './foulTrouble.ts'
 import { disqualify, isDisqualified } from './lineup.ts'
+import { applySubstitutions } from './substitutions.ts'
 import { containmentSkill, penetrationSkill } from './ratings.ts'
 import type { GameState, TeamState } from './state.ts'
 import { lineOf, log, matchupDefender, shortName } from './state.ts'
@@ -11,6 +11,7 @@ import {
   CHARGE_DRAW_WEIGHT,
   NON_SHOOTING_FOUL_MATCHUP_WEIGHT,
   NON_SHOOTING_FOUL_TEMPER_WEIGHT,
+  FOUL_CAUTION,
   OFFENSIVE_FOUL_EDGE_WEIGHT,
 } from './tuning.ts'
 
@@ -34,7 +35,7 @@ function countsAsTeamFoul(game: GameState, kind: FoulKind): boolean {
 /** After a personal foul: a foul-out on the limit, otherwise a chance of a technical. */
 function afterPersonalFoul(game: GameState, team: TeamState, player: Player, kind: FoulKind): void {
   if (lineOf(team, player).personalFouls >= game.rules.personalFoulLimit) {
-    disqualify(game, team, player, 'fouledOut', (p) => sitsForFouls(game, team, p))
+    disqualify(game, team, player, 'fouledOut')
     // A deliberate foul to stop the clock is never argued, so it never draws a technical.
   } else if (kind !== 'intentional') {
     maybeTechnical(game, team, player)
@@ -67,8 +68,20 @@ export function commitFoul(
   lineOf(team, player).personalFouls += 1
   log(game, team, `${description} on ${shortName(player)}`)
   afterPersonalFoul(game, team, player, kind)
-  updateFoulTroubleBench(game, team)
+  // A foul is a dead ball: the coach may substitute (foul trouble, tired players).
+  applySubstitutions(game, team)
   return penalty
+}
+
+/**
+ * Log-odds change (zero or negative) in how likely a player is to commit a foul: one foul from
+ * disqualification he plays it safe (no reaching, no risky contests, no charging in). This is
+ * player behaviour, not a coaching decision, so it applies whoever is on the floor.
+ */
+export function foulCautionEdge(game: GameState, team: TeamState, player: Player): number {
+  if (isDisqualified(team, player)) return 0
+  const oneAway = lineOf(team, player).personalFouls >= game.rules.personalFoulLimit - 1
+  return oneAway ? -FOUL_CAUTION : 0
 }
 
 /**

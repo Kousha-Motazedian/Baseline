@@ -2,6 +2,7 @@ import type { Player } from '../players/types.ts'
 import { adjustProbability, normalizeRating } from '../shared/probability.ts'
 import { pickWeighted } from '../shared/weighted.ts'
 import { matchupEdge } from './contest.ts'
+import { lineupFatigueEdge } from './fatigue.ts'
 import { maybeFastBreak } from './fastBreak.ts'
 import type { ActionOutcome } from './outcome.ts'
 import { continueWith } from './outcome.ts'
@@ -73,7 +74,12 @@ export function offensiveReboundChance(
   const numbers = NUMBERS_REBOUND_EDGE * (offense.onCourt.length - defense.onCourt.length)
   return adjustProbability(
     BASE_BY_SOURCE[source],
-    skillEdge + HEIGHT_EDGE_WEIGHT * sizeEdge + numbers + crashEdge(offense, source),
+    skillEdge +
+      HEIGHT_EDGE_WEIGHT * sizeEdge +
+      numbers +
+      crashEdge(offense, source) +
+      // Tired boxers lose the board: the lineups' fatigue (negative) differences tilt it.
+      (lineupFatigueEdge(offense) - lineupFatigueEdge(defense)),
   )
 }
 

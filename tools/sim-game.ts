@@ -62,6 +62,7 @@ function totalsLine(team: TeamResult): PlayerLine {
   return {
     playerId: 'total',
     name: 'TEAM',
+    started: false,
     secondsPlayed: sum('secondsPlayed'),
     points: team.points,
     fieldGoalsMade: sum('fieldGoalsMade'),
