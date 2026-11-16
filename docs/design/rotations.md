@@ -51,17 +51,20 @@ Subs happen at **dead balls** (the engine already checks at each possession star
 
 ## 5. Calibration targets (batch-sim gains player-level checks)
 
-| Metric                                     | Target (pro)                                |
-| ------------------------------------------ | ------------------------------------------- |
-| Starter minutes (team average)             | 30–33                                       |
-| Most minutes on a team, per game           | 34–38                                       |
-| Players with 10+ minutes per team-game     | 8–10                                        |
-| Team top scorer, points per game           | 26–29                                       |
-| Games with a 40+ point scorer              | 10–16%                                      |
-| 50+ point games per game                   | ≤ 0.02                                      |
-| Team leader in rebounds / assists per game | about 10–12 / 7–9                           |
-| League averages (existing targets)         | all still pass                              |
-| Final-margin spread without blowout easing | existing target (12–14 for identical teams) |
+| Metric                                     | Target (pro)                                   |
+| ------------------------------------------ | ---------------------------------------------- |
+| Starter minutes (team average)             | 30–33                                          |
+| Most minutes on a team, per game           | 34–38                                          |
+| Players with 10+ minutes per team-game     | 8–10                                           |
+| Team top scorer, points per game           | 26–29                                          |
+| Games with a 40+ point scorer              | 10–16%                                         |
+| 50+ point games per game                   | ≤ 0.02                                         |
+| Team leader in rebounds / assists per game | about 10–12 / 7–9                              |
+| League averages (existing targets)         | all still pass                                 |
+| Final-margin spread, identical teams       | derived, about 14.0–16.0 (see match-engine.md) |
+| League games: average margin of victory    | 11.9–12.9 (real 12.4)                          |
+| League games: decided by 20+               | 17–22% (real 19.5%)                            |
+| League games: margin SD                    | 14.5–16.5 (real ~15.5)                         |
 
 Also in this step:
 
