@@ -6,12 +6,12 @@ import type { FastBreak } from './fastBreak.ts'
 import { startFastBreak, transitionHelpFactor } from './fastBreak.ts'
 import {
   commitFoul,
+  foulCautionEdge,
   intentionalFouler,
   nonShootingFoulChance,
   nonShootingFoulLabel,
   offensiveFoulChance,
 } from './fouls.ts'
-import { foulCautionEdge } from './foulTrouble.ts'
 import { shootFreeThrows, worstFreeThrowShooter } from './freeThrows.ts'
 import { pickHandler } from './handler.ts'
 import type { ActionKind, ActionOutcome, NextAction } from './outcome.ts'

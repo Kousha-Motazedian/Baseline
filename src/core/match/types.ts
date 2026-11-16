@@ -1,4 +1,5 @@
 import type { Player } from '../players/types.ts'
+import type { RotationCoach, RotationPlan } from '../tactics/rotation.ts'
 import type { TeamSystem } from '../tactics/system.ts'
 
 /**
@@ -39,22 +40,31 @@ export interface TeamCoaching {
   defensiveExecution: number
 }
 
-/** A team as the match engine sees it. The first five roster players start. */
+/** A team as the match engine sees it. */
 export interface MatchTeam {
   id: string
   name: string
   roster: Player[]
   /**
    * Coaching inputs for one game. Optional: absent = BALANCED_SYSTEM with zero execution edges
-   * (today's behaviour, byte-identical).
+   * (neutral tactics).
    */
   coaching?: TeamCoaching
+  /**
+   * The rotation plan (starters in slot order, bench order, target minutes, closers). Absent =
+   * built from the roster with the team's system (see buildRotationPlan).
+   */
+  rotation?: RotationPlan
+  /** The coach attributes behind in-game substitutions. Absent = a neutral coach. */
+  rotationCoach?: RotationCoach
 }
 
 /** One player's box score line. */
 export interface PlayerLine {
   playerId: string
   name: string
+  /** True if he was in the opening five. */
+  started: boolean
   secondsPlayed: number
   points: number
   fieldGoalsMade: number

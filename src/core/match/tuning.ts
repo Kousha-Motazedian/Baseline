@@ -53,10 +53,16 @@ export const PLAY_FIT_OFFENSE_WEIGHT = 2.5
 export const PLAY_FIT_DEFENSE_WEIGHT = 1.5
 
 /**
+ * Shots after which a player's weight starts to fall (see heavyUsageDamping), and the extra shots
+ * that halve it: at 24 shots no change, at 36 (scale 12) half the weight.
+ */
+export const HEAVY_USAGE_SHOTS = 19
+export const HEAVY_USAGE_SCALE = 8
+/**
  * How much shot volume concentrates on the lineup's most attractive player. 1 = proportional to
  * their total play weight; 0.6 keeps the top scorer near ~29% of team FGA (see choosePlay).
  */
-export const USAGE_EXPONENT = 0.6
+export const USAGE_EXPONENT = 0.74
 
 /**
  * How strongly the ball-handler pick favours good handlers (log-weight per normalized
@@ -307,7 +313,7 @@ export const SHORTHANDED_SHOT_EDGE = 0.25
 // ---------------------------------------------------------------------------------------------
 
 /** Free-throw percentage for a league-average shooter (real league ≈ 78%). */
-export const BASE_FREE_THROW = 0.78
+export const BASE_FREE_THROW = 0.786
 /** Free-throw percentage gained per rating point above average (and lost per point below). */
 export const FREE_THROW_PER_RATING_POINT = 0.018
 /**
@@ -325,13 +331,16 @@ export const FREE_THROW_MAX_CHANCE = 0.97
 
 /**
  * How much the offensive player's skill moves the outcome (log-odds per normalized rating).
- * 0.75 means an elite scorer (rating 18) vs. an average defender gains ~0.6 log-odds, e.g. a
- * three goes from the ~33% base to ~47% on an open look, before considering defense.
+ * 0.70 means an elite scorer (rating 18) vs. an average defender gains ~0.55 log-odds. Slightly
+ * below DEFENSE_EDGE_WEIGHT on purpose (it was 0.75): with rotations the offense:defense gain
+ * ratio sat on the 1.50 ceiling (1.50-1.61 across seeds), and 0.70 centres it at ~1.40 for a
+ * +0.4 pts/100 league shift (limit +-2).
  */
-export const OFFENSE_EDGE_WEIGHT = 0.75
+export const OFFENSE_EDGE_WEIGHT = 0.7
 /**
- * How much the defender's skill moves the outcome. Must equal OFFENSE_EDGE_WEIGHT so that a
- * league that gets uniformly better at both ends doesn't score more (see contest.ts). The
+ * How much the defender's skill moves the outcome. Kept close to OFFENSE_EDGE_WEIGHT (within
+ * 0.05) so that a league that gets uniformly better at both ends barely scores more (see
+ * contest.ts and the "league +3 everywhere" balance test). The
  * offense:defense value balance (~1.4 : 1) comes from the composite skill weights in ratings.ts,
  * not from unequal edge weights.
  */
@@ -358,9 +367,10 @@ export const ROAD_COMPOSURE_SHIELD = 0.8
 /**
  * Spread (standard deviation, log-odds) of game-day form for the least and most consistent
  * players. Applies to offense AND defense, so form adds variance without favouring either end.
- * 0.3 at Consistency 1 moves a 36% shooter to ~29% or ~43% on a 1-SD bad or good day.
+ * 0.2 at Consistency 1 moves a 36% shooter to ~31% or ~41% on a 1-SD bad or good day (it was 0.3
+ * and a 2.5-SD clamp before rotations; narrowing trimmed the hot-shooting tail of 50-point nights).
  */
-export const FORM_SD_AT_MIN_CONSISTENCY = 0.3
+export const FORM_SD_AT_MIN_CONSISTENCY = 0.2
 export const FORM_SD_AT_MAX_CONSISTENCY = 0.03
 /**
  * Shape of the Consistency → spread curve (1 = linear). 2 puts an average player (10.5) at
@@ -369,7 +379,7 @@ export const FORM_SD_AT_MAX_CONSISTENCY = 0.03
  */
 export const FORM_CURVE_EXPONENT = 2
 /** Form is clamped at this many standard deviations (symmetric, so the mean stays 0). */
-export const FORM_CLAMP_SDS = 2.5
+export const FORM_CLAMP_SDS = 2
 /** How much Composure matters in clutch time (applies to shooters, handlers and defenders alike). */
 export const CLUTCH_EDGE_WEIGHT = 0.2
 /** Clutch time: the final this-many seconds of the last regulation period or overtime... */
@@ -501,43 +511,64 @@ export const KEYED_DEFENSE_SECONDS = 60
 export const KEYED_DEFENSE_MARGIN = 5
 
 // ---------------------------------------------------------------------------------------------
-// STOPGAP: foul-trouble benching (until rotations exist; see foulTrouble.ts)
+// Foul caution and lead safety
 // ---------------------------------------------------------------------------------------------
 
-/**
- * A player sits once his fouls reach (foul limit − margin) in each regulation period: with a
- * 6-foul limit that's 2 in Q1, 3 in Q2, 4 in Q3 and 5 in Q4. Later periods of a longer game use
- * the last margin.
- */
-export const FOUL_TROUBLE_MARGINS: readonly number[] = [4, 3, 2, 1]
-/** Never sit a player for fewer fouls than this (a 5-foul league would otherwise sit him at 1). */
-export const FOUL_TROUBLE_MIN_FOULS = 2
-/** In the final this-many seconds of regulation, and in overtime, nobody sits for fouls. */
-export const FOUL_TROUBLE_RELEASE_SECONDS = 300
 /**
  * How much less likely (log-odds) a player one foul from disqualification is to commit a foul
- * (defensive or offensive): he plays it safe for the minutes he can't be benched.
+ * (defensive or offensive): he plays it safe instead of reaching, gambling or charging in.
  */
-export const FOUL_TROUBLE_CAUTION = 2
-
-// ---------------------------------------------------------------------------------------------
-// STOPGAP: blowout easing (until garbage-time rotations exist; see blowout.ts)
-// ---------------------------------------------------------------------------------------------
-
-/** Most log-odds a leading team gives up per player, at both ends, when the game is decided. */
-export const BLOWOUT_MAX_EASE = 0.17
-/** Easing starts at this second-half lead... */
-export const BLOWOUT_START_LEAD = 4
-/** ...and is fully on (size-wise) at this lead. */
-export const BLOWOUT_FULL_LEAD = 15
+export const FOUL_CAUTION = 1.6
 /**
- * Spread of the margin per √minute still to play, used to judge how safe a lead is. ≈ 2 is the
- * real ~13.5-point full-game spread over 48 minutes.
+ * Spread of the margin per square-root minute still to play, used to judge how safe a lead is.
+ * About 2 matches the real ~13.5-point full-game spread over 48 minutes.
  */
-export const BLOWOUT_MARGIN_SD_PER_SQRT_MINUTE = 2
+export const LEAD_SAFETY_SD_PER_SQRT_MINUTE = 2
 /** Time left is floored at this many minutes when judging safety (avoids dividing by zero). */
-export const BLOWOUT_MIN_MINUTES = 1
-/** Easing starts once the lead is this many spreads of the remaining swing... */
-export const BLOWOUT_START_SAFETY = 0.5
-/** ...and is fully on (safety-wise) at this many. */
-export const BLOWOUT_FULL_SAFETY = 2.5
+export const LEAD_SAFETY_MIN_MINUTES = 1
+
+// ---------------------------------------------------------------------------------------------
+// Fatigue (see docs/design/rotations.md section 1). Energy runs 0-100, 100 at tip-off.
+// ---------------------------------------------------------------------------------------------
+
+/** Energy drained per second on the floor at Stamina 1. 0.10/s = 6 per minute. */
+export const ENERGY_DRAIN_PER_SECOND = 0.07
+/**
+ * Drain at Stamina 20 as a fraction of the Stamina 1 drain (the design says about half). Linear
+ * in between, so an average player (10.5) drains at 75% of the Stamina 1 rate: ~4.5 per minute,
+ * i.e. about 10 straight minutes from fresh to ~55.
+ */
+export const STAMINA_MAX_DRAIN_FACTOR = 0.5
+/**
+ * Energy regained per second on the bench: faster than the average drain (0.075/s), so a short
+ * rest restores most of a stint's loss (5 minutes on the bench regains 45).
+ */
+export const ENERGY_RECOVERY_PER_SECOND = 0.15
+/** Extra energy regained by everyone at a quarter break (or before an overtime). */
+export const QUARTER_BREAK_RECOVERY = 8
+/** Extra energy regained by everyone at halftime (a much longer break). */
+export const HALFTIME_RECOVERY = 25
+/**
+ * Extra drain for the hidden cost of intensity: a fast pace, pushing in transition and
+ * aggressive pressure each make everyone on the floor tire faster. Kept small: they are
+ * trade-offs, not penalties.
+ */
+export const FAST_PACE_DRAIN_FACTOR = 0.08
+export const PUSH_TRANSITION_DRAIN_FACTOR = 0.05
+export const AGGRESSIVE_PRESSURE_DRAIN_FACTOR = 0.08
+/**
+ * Log-odds penalty at zero energy, on every action at both ends. It grows with the square of the
+ * energy missing: at 80 energy it is 4% of this (barely noticeable), at 50 energy 25%, at 20
+ * energy 64%. That gives "small while fresh, steep when exhausted" without a cliff.
+ */
+export const FATIGUE_MAX_EDGE = 1.2
+/**
+ * The share of the penalty that is effort (hustling, closing out, boxing out), which Hustle can
+ * soften. The rest is plain tired legs and affects everyone alike.
+ */
+export const FATIGUE_EFFORT_SHARE = 0.6
+/**
+ * How strongly Hustle scales the effort part: Hustle 20 halves it (factor 0.5), Hustle 1 raises
+ * it by half (factor 1.5), an average player is unchanged.
+ */
+export const HUSTLE_EFFORT_SOFTENING = 0.5

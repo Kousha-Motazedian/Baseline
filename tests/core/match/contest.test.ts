@@ -9,7 +9,7 @@ import {
   matchupEdge,
 } from '../../../src/core/match/contest.ts'
 import { defensiveSkill, heightEdge, rimProtectionSkill } from '../../../src/core/match/ratings.ts'
-import { OFFENSE_EDGE_WEIGHT } from '../../../src/core/match/tuning.ts'
+import { DEFENSE_EDGE_WEIGHT, OFFENSE_EDGE_WEIGHT } from '../../../src/core/match/tuning.ts'
 import { PLAY_TYPES } from '../../../src/core/match/types.ts'
 import { makeFlatTeam, makePlayer, updatePlayer, withAttributes } from '../../helpers/fixtures.ts'
 import { makeGameState } from '../../helpers/gameState.ts'
@@ -52,12 +52,18 @@ describe('contestSkill / contestHeight', () => {
 })
 
 describe('matchupEdge', () => {
-  it('is zero when both sides are equal, at any level (equal weights)', () => {
-    for (const r of [1, 10.5, 20, 25]) expect(matchupEdge(r, r)).toBeCloseTo(0, 12)
+  it('is zero at the average level and nearly zero for equal ratings elsewhere', () => {
+    // The offense weight (0.70) is a little below the defense weight (0.75) on purpose (balance
+    // calibration), so equal ratings above or below average leave a small residual edge.
+    expect(matchupEdge(10.5, 10.5)).toBeCloseTo(0, 12)
+    const gap = Math.abs(OFFENSE_EDGE_WEIGHT - DEFENSE_EDGE_WEIGHT)
+    for (const r of [1, 20, 25]) expect(Math.abs(matchupEdge(r, r))).toBeLessThanOrEqual(gap * 1.6)
   })
 
-  it('is unchanged by a uniform shift of both ratings', () => {
-    expect(matchupEdge(14, 9)).toBeCloseTo(matchupEdge(17, 12), 12)
+  it('a uniform shift of both ratings changes the edge only by the weight gap', () => {
+    const gap = Math.abs(OFFENSE_EDGE_WEIGHT - DEFENSE_EDGE_WEIGHT)
+    const shift = Math.abs(matchupEdge(17, 12) - matchupEdge(14, 9))
+    expect(shift).toBeCloseTo((gap * 3) / 9.5, 12)
   })
 
   it('is antisymmetric and scales with the edge weight', () => {

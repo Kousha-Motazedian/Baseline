@@ -4,8 +4,13 @@ import { randomNormal } from '../shared/normal.ts'
 import { clamp } from '../shared/probability.ts'
 import type { Rng } from '../shared/rng.ts'
 import type { LeagueRules } from '../world/rules.ts'
+import { PRO_RULES } from '../world/rules.ts'
+import { BALANCED_SYSTEM } from '../tactics/system.ts'
+import type { RotationCoach, RotationPlan } from '../tactics/rotation.ts'
+import { buildRotationPlan, NEUTRAL_ROTATION_COACH } from '../tactics/rotation.ts'
 import type { TeamTactics } from './coaching.ts'
 import { teamTactics } from './coaching.ts'
+import { FULL_ENERGY, systemDrainFactor, tickEnergy } from './fatigue.ts'
 import {
   FORM_CLAMP_SDS,
   FORM_CURVE_EXPONENT,
@@ -44,12 +49,14 @@ export interface TeamState {
    * players). Index = lineup slot; slot i guards the opponent's slot i.
    */
   onCourt: Player[]
-  /**
-   * The player each lineup slot belongs to when nobody is in foul trouble (parallel to onCourt).
-   * Starts as the starters; a disqualified regular's replacement takes over his slot. Foul-trouble
-   * benching (foulTrouble.ts, a stopgap) puts a sub in the slot and brings the regular back later.
-   */
-  regulars: Player[]
+  /** The coach's plan for this game (starters, bench order, target minutes, closers). */
+  plan: RotationPlan
+  /** The coach attributes that drive his in-game substitution decisions. */
+  coach: RotationCoach
+  /** Energy (0-100) per roster player; see fatigue.ts. */
+  energy: Map<string, number>
+  /** Multiplier on this team's energy drain from its system (pace, pushing, pressure). */
+  drainFactor: number
   lines: Map<string, PlayerLine>
   /** Game-day form per player, offense and defense (from the hidden Consistency attribute). */
   form: Map<string, PlayerForm>
@@ -85,6 +92,7 @@ export function createPlayerLine(player: Player): PlayerLine {
   return {
     playerId: player.id,
     name: fullName(player),
+    started: false,
     secondsPlayed: 0,
     points: 0,
     fieldGoalsMade: 0,
@@ -142,16 +150,40 @@ export function rollPlayerForm(rng: Rng, player: Player): PlayerForm {
   return { offense: rollForm(rng, player), defense: rollForm(rng, player) }
 }
 
+/** A fresh box score line, marked as a starter if the plan opens with him. */
+function startedLine(player: Player, plan: RotationPlan): PlayerLine {
+  return { ...createPlayerLine(player), started: plan.starters.includes(player.id) }
+}
+
+/** The opening five in slot order (slot i guards the opponent's slot i), straight from the plan. */
+function startersOf(team: MatchTeam, plan: RotationPlan): Player[] {
+  return plan.starters.map((id) => {
+    const player = team.roster.find((p) => p.id === id)
+    if (!player) throw new RangeError(`${team.name}: starter ${id} is not on the roster`)
+    return player
+  })
+}
+
 /** Sets up a team's state at tip-off: starters on the floor, empty box score, form rolled. */
-export function createTeamState(rng: Rng, team: MatchTeam, isHome: boolean): TeamState {
+export function createTeamState(
+  rng: Rng,
+  team: MatchTeam,
+  isHome: boolean,
+  rules: LeagueRules = PRO_RULES,
+): TeamState {
   if (team.roster.length < 5) throw new RangeError(`${team.name} needs at least 5 players`)
+  const system = team.coaching?.system ?? BALANCED_SYSTEM
+  const plan = team.rotation ?? buildRotationPlan(team.roster, undefined, system, undefined, rules)
   return {
     team,
     isHome,
     tactics: teamTactics(team),
-    onCourt: team.roster.slice(0, 5),
-    regulars: team.roster.slice(0, 5),
-    lines: new Map(team.roster.map((p) => [p.id, createPlayerLine(p)])),
+    onCourt: startersOf(team, plan),
+    plan,
+    coach: team.rotationCoach ?? NEUTRAL_ROTATION_COACH,
+    energy: new Map(team.roster.map((p) => [p.id, FULL_ENERGY])),
+    drainFactor: systemDrainFactor(system),
+    lines: new Map(team.roster.map((p) => [p.id, startedLine(p, plan)])),
     form: new Map(team.roster.map((p) => [p.id, rollPlayerForm(rng, p)])),
     disqualified: new Set(),
     teamFouls: 0,
@@ -193,12 +225,13 @@ export function log(game: GameState, team: TeamState, text: string): void {
   })
 }
 
-/** Runs time off the clock and credits it to everyone on the floor. Returns the seconds actually used. */
+/** Runs time off the clock, credits it to everyone on the floor and tires them (the bench rests). Returns the seconds actually used. */
 export function runClock(game: GameState, seconds: number): number {
   const used = Math.min(seconds, game.clock)
   game.clock -= used
   for (const team of [game.home, game.away]) {
     for (const player of team.onCourt) lineOf(team, player).secondsPlayed += used
+    tickEnergy(team, used)
   }
   return used
 }

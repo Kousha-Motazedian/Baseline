@@ -77,7 +77,22 @@ interface Totals {
   /** Sum over team-games of the team's top scorer's points. */
   topScorerPoints: number
   /** Games in which some player scored 40+ (and 50+). */
+  /** Sum over team-games of the starters' average minutes. */
+  starterMinutes: number
+  /** Sum over team-games of the most minutes any player played. */
+  topMinutes: number
+  /** Sum over team-games of the players with 10+ minutes. */
+  tenMinutePlayers: number
+  /** Sum over team-games of the team's rebound and assist leaders' totals. */
+  topRebounds: number
+  topAssists: number
   games40: number
+  /** Sum of the winning margins, and games decided by 20 or more. */
+  winMargin: number
+  /** Sum and sum of squares of the signed (home - away) margin. */
+  marginSum: number
+  marginSquares: number
+  blowouts: number
   games50: number
   playTypeAttempts: Record<PlayType, number>
   playTypeMakes: Record<PlayType, number>
@@ -114,7 +129,16 @@ function emptyTotals(): Totals {
     fastBreakPoints: 0,
     pointsOffTurnovers: 0,
     topScorerPoints: 0,
+    starterMinutes: 0,
+    topMinutes: 0,
+    tenMinutePlayers: 0,
+    topRebounds: 0,
+    topAssists: 0,
     games40: 0,
+    winMargin: 0,
+    marginSum: 0,
+    marginSquares: 0,
+    blowouts: 0,
     games50: 0,
     playTypeAttempts: zeroByPlay(),
     playTypeMakes: zeroByPlay(),
@@ -174,6 +198,20 @@ function topScore(team: TeamResult): number {
   return Math.max(0, ...team.players.map((line) => line.points))
 }
 
+/** Adds one team-game's minutes and individual-leader numbers (rotation calibration). */
+function addPlayerLevel(totals: Totals, team: TeamResult): void {
+  const starters = team.players.filter((line) => line.started)
+  const starterSeconds = starters.reduce((sum, line) => sum + line.secondsPlayed, 0)
+  totals.starterMinutes += starterSeconds / Math.max(1, starters.length) / 60
+  totals.topMinutes += Math.max(0, ...team.players.map((line) => line.secondsPlayed)) / 60
+  totals.tenMinutePlayers += team.players.filter((line) => line.secondsPlayed >= 600).length
+  totals.topRebounds += Math.max(
+    0,
+    ...team.players.map((line) => line.offensiveRebounds + line.defensiveRebounds),
+  )
+  totals.topAssists += Math.max(0, ...team.players.map((line) => line.assists))
+}
+
 /** Adds the individual-scoring watch numbers (top scorers, 40+ and 50+ games) for one game. */
 function addTopScorers(totals: Totals, result: MatchResult): void {
   const home = topScore(result.home)
@@ -191,6 +229,13 @@ function addGame(totals: Totals, result: MatchResult): void {
   addTeamGame(totals, result.home, result.away, minutes)
   addTeamGame(totals, result.away, result.home, minutes)
   addTopScorers(totals, result)
+  const margin = Math.abs(result.home.points - result.away.points)
+  totals.winMargin += margin
+  totals.marginSum += result.home.points - result.away.points
+  totals.marginSquares += (result.home.points - result.away.points) ** 2
+  if (margin >= 20) totals.blowouts += 1
+  addPlayerLevel(totals, result.home)
+  addPlayerLevel(totals, result.away)
 }
 
 /** One league-average stat with its real-world target range (no range = reported only). */
@@ -200,6 +245,22 @@ interface Metric {
   min?: number
   max?: number
   digits: number
+}
+
+/**
+ * Paired games per balance test (at least). The offense:defense ratio divides two noisy gains, so
+ * 2,000 games leave it +-0.1 between seeds; 6,000 brings that to about +-0.06.
+ */
+const BALANCE_MIN_GAMES = 6000
+
+/** Real league-game margin SD range (about 15.5, from the 2021-22 to 2025-26 seasons). */
+const LEAGUE_MARGIN_SD_MIN = 14.5
+const LEAGUE_MARGIN_SD_MAX = 16.5
+
+/** Standard deviation of the signed home-minus-away margin over the league games. */
+function marginSd(t: Totals): number {
+  const mean = t.marginSum / t.games
+  return Math.sqrt(t.marginSquares / t.games - mean * mean)
 }
 
 /** Computes every calibration metric from the totals, with the real modern pro-league targets. */
@@ -282,11 +343,83 @@ function metrics(t: Totals): Metric[] {
       max: 0.07,
       digits: 3,
     },
-    // Individual box-score watch (report only until rotations exist; see docs/TODO.md). Real
-    // modern pro league: team top scorer ≈ 27–28 pts, a 40+ scorer in ≈ 10–16% of games.
-    { label: 'Team top scorer (pts)', value: t.topScorerPoints / t.teamGames, digits: 1 },
-    { label: 'Games with a 40+ scorer', value: t.games40 / t.games, digits: 3 },
-    { label: 'Games with a 50+ scorer', value: t.games50 / t.games, digits: 3 },
+    // Individual box-score checks (rotations; see docs/design/rotations.md section 5). Minutes
+    // include overtime. The 40+/50+ rows count games where EITHER team had such a scorer.
+    {
+      label: 'Starter minutes (team avg)',
+      value: t.starterMinutes / t.teamGames,
+      min: 30,
+      max: 33,
+      digits: 1,
+    },
+    {
+      label: 'Most minutes on a team',
+      value: t.topMinutes / t.teamGames,
+      min: 34,
+      max: 38,
+      digits: 1,
+    },
+    {
+      label: 'Players with 10+ min / team',
+      value: t.tenMinutePlayers / t.teamGames,
+      min: 8,
+      max: 10,
+      digits: 2,
+    },
+    {
+      label: 'Team top scorer (pts)',
+      value: t.topScorerPoints / t.teamGames,
+      min: 26,
+      max: 29,
+      digits: 1,
+    },
+    // Real 2021-22 to 2025-26 pro seasons: average margin of victory 12.4, 19.5% of games
+    // decided by 20 or more (user decision, rotations step).
+    {
+      label: 'Avg margin of victory',
+      value: t.winMargin / t.games,
+      min: 11.9,
+      max: 12.9,
+      digits: 2,
+    },
+    {
+      // Real league-game spread: average |margin| 12.4 ~ 0.8 x SD, so SD ~ 15.5. It includes the
+      // spread in team quality, which identical teams lack (see the identical-teams target).
+      label: 'League-game margin SD',
+      value: marginSd(t),
+      min: LEAGUE_MARGIN_SD_MIN,
+      max: LEAGUE_MARGIN_SD_MAX,
+      digits: 1,
+    },
+    { label: 'Games decided by 20+', value: t.blowouts / t.games, min: 0.17, max: 0.22, digits: 3 },
+    {
+      label: 'Games with a 40+ scorer',
+      value: t.games40 / t.games,
+      min: 0.1,
+      max: 0.16,
+      digits: 3,
+    },
+    {
+      label: 'Games with a 50+ scorer',
+      value: t.games50 / t.games,
+      min: 0,
+      max: 0.02,
+      digits: 3,
+    },
+    {
+      label: 'Team rebound leader',
+      value: t.topRebounds / t.teamGames,
+      min: 10,
+      max: 12,
+      digits: 1,
+    },
+    {
+      label: 'Team assist leader',
+      value: t.topAssists / t.teamGames,
+      min: 7,
+      max: 9,
+      digits: 1,
+    },
   ]
 }
 
@@ -402,6 +535,27 @@ function play(team: MatchTeam, opponent: MatchTeam, index: number, seed: number)
   })
 }
 
+/**
+ * The generator's team-quality spread: the SD of the expected margin between two generated
+ * teams. Each pair plays `gamesPer` games (home court alternating, so it cancels); the variance
+ * of the pair means is spread^2 + noise^2 / gamesPer, so the identical-teams noise is subtracted.
+ */
+function qualitySpread(seed: number, pairs: number, gamesPer: number, noiseSd: number): number {
+  const means: number[] = []
+  for (let i = 0; i < pairs; i++) {
+    const [a, b] = calibrationPair(seed + 900, i)
+    let sum = 0
+    for (let g = 0; g < gamesPer; g++) {
+      const r = play(a, b, g, seed + i * 31)
+      // Margin from team A's side, whoever was at home.
+      sum += (g % 2 === 0 ? 1 : -1) * (r.home.points - r.away.points)
+    }
+    means.push(sum / gamesPer)
+  }
+  const variance = standardDeviation(means) ** 2 - noiseSd ** 2 / gamesPer
+  return Math.sqrt(Math.max(0, variance))
+}
+
 /** Simulates the calibration league: `games` games between freshly generated teams. */
 function runLeague(games: number, seed: number): Totals {
   const totals = emptyTotals()
@@ -429,7 +583,7 @@ function standardDeviation(values: readonly number[]): number {
  * alternating. Every difference in the result is randomness (plus home court), which is what
  * the margin spread and overtime rate are meant to measure.
  */
-function runIdentical(games: number, seed: number): Metric[] {
+function runIdentical(games: number, seed: number): IdenticalRun {
   const margins: number[] = []
   let overtimes = 0
   let homeWins = 0
@@ -440,14 +594,35 @@ function runIdentical(games: number, seed: number): Metric[] {
     if (result.periodsPlayed > PRO_RULES.periods) overtimes++
     if (result.home.points > result.away.points) homeWins++
   }
+  return { margins, overtimes, homeWins }
+}
+
+/** Raw results of the identical-teams games. */
+interface IdenticalRun {
+  margins: number[]
+  overtimes: number
+  homeWins: number
+}
+
+/** The identical-teams metrics, with the margin-SD target derived from the quality spread. */
+function identicalMetrics(run: IdenticalRun, spread: number): Metric[] {
+  const { margins, overtimes, homeWins } = run
+  const games = margins.length
   const homeMargin = margins.reduce((s, m) => s + m, 0) / games
   // Final margins of exactly 11 or 12 (either way): a spike there means late intentional fouling
   // stopped at a fixed deficit cap.
   const elevenOrTwelve = margins.filter((m) => Math.abs(m) === 11 || Math.abs(m) === 12).length
   return [
-    // Target 12–14: the real spread left once team strength is accounted for (≈ what's left after
-    // betting lines), since identical teams have no strength gap at all.
-    { label: 'Margin SD (points)', value: standardDeviation(margins), min: 12, max: 14, digits: 1 },
+    // Target: the real league-game SD range with OUR generator's quality spread taken out, since
+    // identical teams have no strength gap: sqrt(league SD^2 - spread^2). See match-engine.md.
+    {
+      label: 'Margin SD (points)',
+      value: standardDeviation(margins),
+      min: Math.sqrt(LEAGUE_MARGIN_SD_MIN ** 2 - spread ** 2),
+      max: Math.sqrt(LEAGUE_MARGIN_SD_MAX ** 2 - spread ** 2),
+      digits: 1,
+    },
+    { label: 'Generator quality spread (SD)', value: spread, digits: 2 },
     { label: 'Overtime rate (games)', value: overtimes / games, min: 0.05, max: 0.07, digits: 3 },
     { label: 'Home win rate', value: homeWins / games, digits: 3 },
     { label: 'Home margin (points)', value: homeMargin, digits: 2 },
@@ -848,11 +1023,15 @@ function main(): void {
     return
   }
   printReport(runLeague(games, seed))
+  // The identical-teams noise, then the team-quality spread it implies for the generator.
+  const identical = runIdentical(games, seed)
+  const spread = qualitySpread(seed, 400, 6, standardDeviation(identical.margins))
   printMetrics(
     `Identical teams (${games} games, each team vs. a copy of itself)`,
-    runIdentical(games, seed),
+    identicalMetrics(identical, spread),
   )
-  if (process.argv.includes('--balance')) runBalance(numberArg('balance-games', games), seed)
+  if (process.argv.includes('--balance'))
+    runBalance(numberArg('balance-games', Math.max(games, BALANCE_MIN_GAMES)), seed)
   if (process.argv.includes('--systems')) {
     // The experiments compare systems against no system, so they never use --league-systems teams.
     useLeagueSystems = false

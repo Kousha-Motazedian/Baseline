@@ -69,11 +69,12 @@ describe('technical free throw shooter', () => {
     away.roster[0] = makePlayer({ id: 'starter', heightCm: 191, attributes: { freeThrow: 15 } })
     away.roster[5] = makePlayer({ id: 'sub', heightCm: 191, attributes: { freeThrow: 19 } })
     const game = state(PRO_RULES, undefined, away)
-    disqualify(game, game.away, slot(game.away.onCourt, 3), 'fouledOut')
-    // Slot 3 (201 cm) is replaced by the closest height on the bench: slot 7 (201 cm), not the sub.
     assessTechnical(game, game.home, slot(game.home.onCourt, 0))
     expect(attemptsById(game.away)).toMatchObject({ starter: 1, sub: 0 })
-    disqualify(game, game.away, slot(game.away.onCourt, 0), 'fouledOut')
+    // The sub comes in for a disqualified player (placed by hand: who the coach picks is his call).
+    const out = slot(game.away.onCourt, 1)
+    game.away.disqualified.add(out.id)
+    game.away.onCourt[1] = slot(game.away.team.roster, 5)
     assessTechnical(game, game.home, slot(game.home.onCourt, 1))
     expect(attemptsById(game.away)).toMatchObject({ starter: 1, sub: 1 })
   })
@@ -223,7 +224,6 @@ describe('ejection with no bench (tester round 3)', () => {
     disqualify(game, game.home, player, 'ejected')
     expect(game.home.onCourt).not.toContain(player)
     expect(game.home.onCourt).toHaveLength(4)
-    expect(game.home.regulars).toHaveLength(4)
   })
 
   it('the last player on the floor stays on even when ejected', () => {
