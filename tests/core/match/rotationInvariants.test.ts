@@ -28,7 +28,7 @@ function randomTeam(seed: number, id: string, rules: LeagueRules): MatchTeam {
   }
 }
 
-/** Replays check-ins from the play-by-play; returns stint lengths in subs per team, or throws on a violation. */
+/** Replays a team's check-ins from the play-by-play; returns its sub count (-1 = skipped). */
 function replay(result: MatchResult, team: MatchTeam, id: string): number {
   const byName = new Map<string, string>()
   for (const p of team.roster) byName.set(p.lastName, p.id)

@@ -63,7 +63,7 @@ export const HEAVY_USAGE_SCALE = 8
  * their total play weight; 0.74 (up from 0.6 once heavy-usage damping trimmed the 50-point tail)
  * is what the rotations calibration settled on (see choosePlay and match-engine.md).
  */
-export const USAGE_EXPONENT = 0.74
+export const USAGE_EXPONENT = 0.72
 
 /**
  * How strongly the ball-handler pick favours good handlers (log-weight per normalized
@@ -337,7 +337,7 @@ export const FREE_THROW_MAX_CHANCE = 0.97
  * ratio sat on the 1.50 ceiling (1.50-1.61 across seeds), and 0.70 centres it at ~1.40 for a
  * +0.4 pts/100 league shift (limit +-2).
  */
-export const OFFENSE_EDGE_WEIGHT = 0.7
+export const OFFENSE_EDGE_WEIGHT = 0.72
 /**
  * How much the defender's skill moves the outcome. Kept close to OFFENSE_EDGE_WEIGHT (within
  * 0.05) so that a league that gets uniformly better at both ends barely scores more (see
@@ -532,16 +532,18 @@ export const LEAD_SAFETY_MIN_MINUTES = 1
 // Fatigue (see docs/design/rotations.md section 1). Energy runs 0-100, 100 at tip-off.
 // ---------------------------------------------------------------------------------------------
 
-/** Energy drained per second on the floor at Stamina 1. 0.10/s = 6 per minute. */
+/** Below this energy a player counts as exhausted in the exhaustedSeconds diagnostic. */
+export const EXHAUSTED_ENERGY = 40
+/** Energy drained per second on the floor at Stamina 1. 0.07/s = 4.2 per minute. */
 export const ENERGY_DRAIN_PER_SECOND = 0.07
 /**
  * Drain at Stamina 20 as a fraction of the Stamina 1 drain (the design says about half). Linear
- * in between, so an average player (10.5) drains at 75% of the Stamina 1 rate: ~4.5 per minute,
- * i.e. about 10 straight minutes from fresh to ~55.
+ * in between, so an average player (10.5) drains at 75% of the Stamina 1 rate: ~3.2 per minute,
+ * i.e. about 10 straight minutes from fresh to ~68.
  */
 export const STAMINA_MAX_DRAIN_FACTOR = 0.5
 /**
- * Energy regained per second on the bench: faster than the average drain (0.075/s), so a short
+ * Energy regained per second on the bench: faster than the average drain (0.0525/s), so a short
  * rest restores most of a stint's loss (5 minutes on the bench regains 45).
  */
 export const ENERGY_RECOVERY_PER_SECOND = 0.15

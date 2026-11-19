@@ -20,11 +20,12 @@ import { playSeries, seriesTotal, sides, SLOW_TEST_TIMEOUT_MS } from '../../help
 
 /**
  * SHA-256 of 40 fixed-seed games (league teams, every 4th under FIBA rules), recorded after
- * rotations (the real tactics/rotation code) and fatigue were added and calibrated (rotations change every game, so the pre-rotations hash
- * 730b3188... from the pre-systems engine is retired). Any change to the engine, the rotation
- * code or the RNG draw order changes it: re-record it deliberately and say why in the commit.
+ * rotations (the real tactics/rotation code) and fatigue were added and calibrated (rotations
+ * change every game, so the pre-rotations hash 730b3188... from the pre-systems engine is
+ * retired). Any change to the engine, the rotation code or the RNG draw order changes it:
+ * re-record it deliberately and say why in the commit.
  */
-const GOLDEN_HASH = 'bebedcd98c162933c77c7651153a7364fdbebf3490d86be19ee06132669131dd'
+const GOLDEN_HASH = '75663692a37bba19e81c76fb795a998341f5d45c24225851764d4c019e451a11'
 
 /** Hash of the 40 golden games, with both teams given `coaching` (or none). */
 function goldenHash(coaching: MatchTeam['coaching']): string {

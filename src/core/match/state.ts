@@ -10,8 +10,9 @@ import type { RotationCoach, RotationPlan } from '../tactics/rotation.ts'
 import { buildRotationPlan, NEUTRAL_ROTATION_COACH } from '../tactics/rotation.ts'
 import type { TeamTactics } from './coaching.ts'
 import { teamTactics } from './coaching.ts'
-import { FULL_ENERGY, systemDrainFactor, tickEnergy } from './fatigue.ts'
+import { energyOf, FULL_ENERGY, systemDrainFactor, tickEnergy } from './fatigue.ts'
 import {
+  EXHAUSTED_ENERGY,
   FORM_CLAMP_SDS,
   FORM_CURVE_EXPONENT,
   FORM_SD_AT_MAX_CONSISTENCY,
@@ -73,6 +74,8 @@ export interface TeamState {
   fastBreakPoints: number
   pointsOffTurnovers: number
   teamRebounds: number
+  /** Player-seconds on the floor below EXHAUSTED_ENERGY (diagnostic). */
+  exhaustedSeconds: number
 }
 
 /** The whole game's live state. */
@@ -195,6 +198,7 @@ export function createTeamState(
     fastBreakPoints: 0,
     pointsOffTurnovers: 0,
     teamRebounds: 0,
+    exhaustedSeconds: 0,
   }
 }
 
@@ -225,12 +229,18 @@ export function log(game: GameState, team: TeamState, text: string): void {
   })
 }
 
-/** Runs time off the clock, credits it to everyone on the floor and tires them (the bench rests). Returns the seconds actually used. */
+/**
+ * Runs time off the clock, credits it to everyone on the floor and tires them (the bench rests).
+ * Returns the seconds actually used.
+ */
 export function runClock(game: GameState, seconds: number): number {
   const used = Math.min(seconds, game.clock)
   game.clock -= used
   for (const team of [game.home, game.away]) {
-    for (const player of team.onCourt) lineOf(team, player).secondsPlayed += used
+    for (const player of team.onCourt) {
+      lineOf(team, player).secondsPlayed += used
+      if (energyOf(team, player) < EXHAUSTED_ENERGY) team.exhaustedSeconds += used
+    }
     tickEnergy(team, used)
   }
   return used

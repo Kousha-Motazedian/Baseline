@@ -110,10 +110,10 @@ offensive fouls count only where `offensiveFoulsCountAsTeamFouls` is set (FIBA).
 - **Intentional fouls:** see score effects. They never roll a technical (nobody argues a foul
   his own team chose to commit).
 - **Foul caution:** a player one foul from disqualification commits every kind of foul
-  (shooting, non-shooting, offensive) at `FOUL_CAUTION` = 2 log-odds lower (≈ 1/6 the
+  (shooting, non-shooting, offensive) at `FOUL_CAUTION` = 1.6 log-odds lower (≈ 1/5 the
   rate): he stops reaching, contests softly and doesn't charge in. On shots the caution is
-  blended by contest share like Discipline. Late in
-  close games nobody can be benched, so without it starters on 5 fouls fouled out often.
+  blended by contest share like Discipline. Late in close games the coach sits nobody for
+  fouls, so without it starters on 5 fouls fouled out often.
 
 ### Team fouls and the bonus (`LeagueRules`)
 
@@ -323,7 +323,9 @@ changes fix that:
 
 ### 1. Equal edge weights
 
-`OFFENSE_EDGE_WEIGHT = DEFENSE_EDGE_WEIGHT = 0.75`, applied through one function
+`OFFENSE_EDGE_WEIGHT = DEFENSE_EDGE_WEIGHT = 0.75` originally (the rotations calibration lowered
+the offensive weight to 0.70, so the cancellation is now near-exact rather than exact; see
+"Calibration with rotations"), applied through one function
 (`matchupEdge` in `contest.ts`) for shots, turnovers (ball security vs. ball pressure) and
 offensive rebounds (offensive vs. defensive rebounding). Shooting fouls use one weight for the
 shooter's Aggression and the defender's Discipline. When every rating rises by the same amount,
@@ -458,7 +460,8 @@ mix per team-game (round 2, seed 1, 300 games): shooting ≈ 9, non-shooting ≈
 intentional ≈ 0.5.
 
 **Identical teams** (each generated team vs. an exact copy, home alternating, 2,000 games). The
-margin-SD target is **12–14**: identical teams have no strength gap at all, so the right
+margin-SD target was **12–14** in round 3 (retired with rotations: now derived from the
+league-game SD, see "Calibration with rotations"): identical teams have no strength gap at all, so the right
 comparison is the real spread left once team strength is accounted for (≈ what's left after
 betting lines, ≈ 12–13), not the raw 13–15 of all real games.
 
@@ -585,34 +588,39 @@ unrealistic rules.
 
 `tests/core/match/systems.test.ts` records a SHA-256 of 40 fixed-seed games. Rotations change
 every game, so the pre-rotations hash (`730b3188…`, the pre-systems engine) is retired and a
-new one was recorded after this change (with the temporary tactics stub; **re-record after the
-real rotation code is merged**). The byte-identity guarantee with the old engine ends here; a
-same-seed determinism test remains.
+new one (`bebedcd9…`) was recorded with the real rotation code merged and calibrated. The
+byte-identity guarantee with the old engine ends here; a same-seed determinism test remains.
 
 ## Calibration with rotations (final numbers)
 
-`npm run sim:batch -- --games 2000 --balance --seed N` (generated league teams, coaches off; the
-balance tests use at least 6,000 paired games so the offense:defense ratio is not seed noise).
-Everything passes except the known overtime gap (0.032-0.043 vs. 0.05-0.07), the next step's job
+`npm run sim:batch -- --games 2000 --balance --seed N` (generated league teams, neutral coach;
+the balance tests use at least 6,000 paired games so the offense:defense ratio is not seed noise).
+`--league-systems` now gives every team a generated head coach with real attributes (his own
+system, execution edges, rotation plan and substitution attributes, through `matchTeamFor`).
+Everything passes except the known overtime gap (0.026-0.042 vs. 0.05-0.07), the next step's job
 (timeouts and end-game decisions).
 
-| Metric                                       | Seed 1             | Seed 2             | Seed 3             | `--league-systems` | Target                  |
-| -------------------------------------------- | ------------------ | ------------------ | ------------------ | ------------------ | ----------------------- |
-| Starter minutes (team avg)                   | 31.2               | 30.8               | 30.9               | 30.7               | 30-33                   |
-| Most minutes on a team                       | 35.2               | 34.7               | 34.9               | 34.6               | 34-38                   |
-| Players with 10+ min / team                  | 9.05               | 9.12               | 9.08               | 9.13               | 8-10                    |
-| Team top scorer (pts)                        | 27.3               | 26.9               | 27.1               | 26.7               | 26-29                   |
-| Games with a 40+ scorer                      | 0.119              | 0.110              | 0.121              | 0.108              | 0.10-0.16               |
-| Games with a 50+ scorer                      | 0.017              | 0.017              | 0.015              | 0.013              | <= 0.02                 |
-| Team rebound / assist leader                 | 11.3 / 8.6         | 11.2 / 8.6         | 11.2 / 8.6         | 11.0 / 8.6         | 10-12 / 7-9             |
-| Avg margin of victory (league games)         | 12.02              | 12.46              | 12.35              | 12.42              | 11.9-12.9 (real 12.4)   |
-| Games decided by 20+                         | 0.184              | 0.202              | 0.196              | 0.196              | 0.17-0.22 (real 0.195)  |
-| League-game margin SD                        | 15.4               | 15.8               | 15.6               | 15.7               | 14.5-16.5 (real ~15.5)  |
-| Identical teams: margin SD                   | 15.2               | 15.3               | 15.1               | 15.2               | derived (below)         |
-| Generator quality spread (SD)                | 3.84               | 3.16               | 3.96               | 4.09               | report                  |
-| FT% / ORB% / steals                          | .776 / .232 / 7.16 | .777 / .232 / 7.16 | .778 / .233 / 7.24 | .778 / .234 / 7.70 | .77-.79 / .23-.27 / 7-8 |
-| Offense : defense ratio (6,000 paired games) | 1.37               | 1.44               | 1.41               | -                  | 1.30-1.50               |
-| League +3 everywhere shift (pts/100)         | +0.36              | +0.49              | +0.32              | -                  | within +-2              |
+| Metric                                               | Seed 1             | Seed 2             | Seed 3             | `--league-systems` (real coaches) | Target                  |
+| ---------------------------------------------------- | ------------------ | ------------------ | ------------------ | --------------------------------- | ----------------------- |
+| Starter minutes (team avg)                           | 31.4               | 31.2               | 31.2               | 31.0                              | 30-33                   |
+| Most minutes on a team                               | 37.3               | 37.1               | 37.1               | 36.9                              | 34-38                   |
+| Players with 10+ min / team                          | 8.90               | 8.90               | 8.91               | 8.95                              | 8-10                    |
+| Team top scorer (pts)                                | 27.6               | 27.5               | 27.4               | 27.3                              | 26-29                   |
+| Games with a 40+ scorer                              | 0.117              | 0.116              | 0.110              | 0.127                             | 0.10-0.16               |
+| Games with a 50+ scorer                              | 0.018              | 0.014              | 0.013              | 0.019                             | <= 0.02                 |
+| Team rebound / assist leader                         | 11.5 / 8.6         | 11.4 / 8.7         | 11.4 / 8.6         | 11.5 / 8.7                        | 10-12 / 7-9             |
+| Avg margin of victory (league games)                 | 12.19              | 12.73              | 12.59              | 12.51                             | 11.9-12.9 (real 12.4)   |
+| Games decided by 20+                                 | 0.195              | 0.207              | 0.211              | 0.207                             | 0.17-0.22 (real 0.195)  |
+| League-game margin SD                                | 15.3               | 15.9               | 15.8               | 15.8                              | 14.5-16.5 (real ~15.5)  |
+| Identical teams: margin SD                           | 15.3               | 14.9               | 15.1               | 15.6                              | derived (below)         |
+| Generator quality spread (SD)                        | 3.80               | 3.98               | 3.42               | 4.46                              | report                  |
+| Substitutions / game (both teams)                    | 48.1               | 48.5               | 48.1               | 49.3                              | 40-55 (real 40-50)      |
+| Zero-plan players, share of minutes                  | 0.045              | 0.048              | 0.047              | 0.048                             | <= 0.06 (real 3-6%)     |
+| Zero-plan minutes / team-game, games decided by < 10 | 1.02               | 1.13               | 0.91               | 1.01                              | <= 2                    |
+| Plan gap (mean abs played - planned, min)            | 5.03               | 5.15               | 5.15               | 5.25                              | report                  |
+| FT% / ORB% / steals                                  | .777 / .232 / 7.21 | .779 / .232 / 7.22 | .779 / .231 / 7.20 | .777 / .233 / 7.70                | .77-.79 / .23-.27 / 7-8 |
+| Offense : defense ratio (6,000 paired games)         | 1.40               | 1.35               | 1.41               | -                                 | 1.30-1.50               |
+| League +3 everywhere shift (pts/100)                 | +0.62              | +0.90              | +0.98              | -                                 | within +-2              |
 
 **League-game margin targets (user decision, real 2021-22 to 2025-26 seasons).** Average margin of
 victory 12.4 and 19.5% of games decided by 20+. Average |margin| is about 0.8 x the margin SD for
@@ -621,28 +629,58 @@ a roughly normal margin, so the real league-game SD is about 15.5; the target ra
 **Identical-teams margin SD, derived rather than chosen.** Real league games include the spread
 in team quality; identical teams do not, so identical SD = sqrt(league SD^2 - quality spread^2).
 Real NBA quality spread (SD of expected margins between teams) is about 5-6 points, which would
-put identical teams near 14.4-14.7. Our generator's measured spread is smaller (3.2-4.1 over
-seeds, from 400 pairs x 6 games, the variance of pair means minus the identical-teams noise), so
+put identical teams near 14.4-14.7. Our generator's measured spread is smaller (3.4-4.5 over
+seeds, from 400 pairs x 6 games: the variance of pair means minus the identical-teams noise), so
 batch-sim derives the target from the measured spread: 14.5/16.5 through sqrt(x^2 - spread^2)
-gives about 14.0-16.0 here, and the old fixed 12-14 range is retired (it dated from an older,
-lower real margin spread and would now require a league-game SD of about 14). The gap between
-our spread (about 3.7) and the real one (5-6) is a generator question (team-quality spread),
-recorded in TODO.md; closing it would move the identical-teams target down to the ~14.5 range.
+gives about 14.0-16.0 here. The gap between our spread (about 3.8) and the real one (5-6) is a
+generator question (team-quality spread), recorded in TODO.md.
+
+**Rotation quality by Rotation Management** (`--rotation-probe`, 600 games per row, every coach
+at the given rating, balanced system; real coaches in `--league-systems` bucket the same way:
+low (<= 8) 23.5 subs and 5.44 min plan gap per team-game, mid 24.9 / 5.24, high (> 13) 25.6 / 5.01).
+
+| Rotation Management / Game Management | Subs / game | Plan gap (min) | Zero-plan share | Exhausted (min on floor under 40 energy / team-game) |
+| ------------------------------------- | ----------- | -------------- | --------------- | ---------------------------------------------------- |
+| 1 / 10.5                              | 39.8        | 5.47           | 0.044           | 5.0                                                  |
+| 10.5 / 10.5                           | 47.9        | 4.98           | 0.045           | 0.6                                                  |
+| 20 / 10.5                             | 54.6        | 4.76           | 0.049           | 0.0                                                  |
+| 10.5 / 1                              | 53.6        | 6.44           | 0.057           | 1.2                                                  |
+| 10.5 / 20                             | 45.0        | 5.16           | 0.041           | 0.7                                                  |
+
+A high Rotation Management coach tracks the plan better and rests players before they are
+exhausted (about 5 minutes per game of play under 40 energy at Rotation Management 1, none at 20) with roughly 40-55 substitutions in every case. Before this retune (a review finding: the
+engine had only ever run a neutral coach, and the bridge from a real coach did not exist) the
+same probe gave 44 / 65 / 86 substitutions at 1 / 10.5 / 20, so a sharp coach churned twice as
+much for almost no better tracking. A low Game Management coach tracks the plan worst (6.4
+minutes) and sits and returns his stars poorly; a high one gambles on fouls.
 
 What was tuned (`tuning.ts`, `tactics/rotationTuning.ts`):
 
 - **Fatigue drain** 0.10 -> 0.07/s: starters were pulled early by tiredness, not by the plan.
-- **Plan starter minutes** 35/32/29 -> 40/37/34 (ride / balanced / share). Rest, foul trouble and
-  garbage time take 4-7 minutes off the plan, so the plan asks for more than the realised 30-33.
-- **Garbage time** (`GARBAGE_TRAILING_FACTOR` 1.17): the leader rests his starters at a 12-point
-  lead, the trailing coach only concedes at 1.17x that lead and safety. 1.5x gave a league average
-  margin of 10.6 with 12% blowouts; 1.2 gave 12.3 / 20%; the final value keeps all seeds in range.
+- **Plan starter minutes** 35/32/29 -> 37/34/31 (ride / balanced / share). Rest, foul trouble
+  and garbage time take 3-6 minutes off the plan, so the plan asks for more than the realised
+  30-33.
+- **Garbage time** (rotations.md section 8): fourth quarter only (the third needs 1.5x the lead
+  and safety), entry at a 10-point lead and safety 2.0 (GM 1) to 1.2 (GM 20), hysteresis (once
+  four bench players are on the floor it holds down to 60% of those), the bench in rotation order
+  first, and players the plan gives 0 minutes stay out until |lead safety| reaches 4.5 (the game
+  is over). `GARBAGE_TRAILING_FACTOR` 1.65: the trailing coach concedes later than the leader.
+  Together they cut the end-of-bench share from ~15% (second-half 12-point leads, deepest first,
+  the 0-minute players got 11-12 player-minutes even in games decided by < 8) to 4.5-4.8%, and
+  1 player-minute per team-game in games decided by < 10. A symmetric rule lets the margin run
+  away (avg margin 13.4-13.9, 25-27% decided by 20+); the trailing coach keeping his starters
+  longer brings it back to the real 12.4 / 19.5%.
+- **Rotation Management** (`PACE_WEIGHT_AT_RM_1/20` 0.3 / 0.55, `ATTENTION_AT_RM_1` 0.85,
+  `TIRED_LINE_AT_RM_1/20` 38 / 55): narrower, so the pace term and the watch rate stop doubling
+  the churn at the top; the high end still rests earlier. `OUT_OF_ROTATION_COST` 3 -> 10 (above
+  the 8-point position misfit, so a bench centre the plan does not use no longer replaces the
+  starting centre when a rotation forward could cover).
 - **Heavy-usage damping** (`HEAVY_USAGE_SHOTS` 19, `HEAVY_USAGE_SCALE` 8, `playSelection.ts`): a
   player's shot weight falls once he has taken many shots (the defense adjusts to a hot scorer).
-  It trims the 50-point tail (50+ games were 0.02-0.025 with a 40+ rate of ~0.11) without
-  touching ordinary star nights, so `USAGE_EXPONENT` could rise 0.6 -> 0.74 to lift 40+ games.
-- **`OFFENSE_EDGE_WEIGHT`** 0.75 -> 0.70 (defense stays 0.75): the offense:defense ratio sat at
-  1.50-1.61 across seeds; it is now ~1.4, for a league-wide +0.4 pts/100 shift.
+  It trims the 50-point tail without touching ordinary star nights, which is why
+  `USAGE_EXPONENT` was raised 0.6 -> 0.72 to keep 40+ games in range.
+- **`OFFENSE_EDGE_WEIGHT`** 0.75 -> 0.72 (defense stays 0.75): keeps the offense:defense ratio
+  at about 1.4 (it was 1.50-1.61 across seeds, then 1.28-1.33 at 0.70 once garbage time changed).
 - **Foul caution** 2 -> 1.6 and **`BASE_FREE_THROW`** 0.78 -> 0.786 (foul-outs and FT% were just
   under their floors).
 - **Form spread** narrowed (SD at Consistency 1: 0.3 -> 0.2, clamp 2.5 -> 2 SDs): trims hot
@@ -653,3 +691,6 @@ Performance: the plan's lineup search precomputes values and slot costs, and the
 per-decision utilities are cached; a generated-team game costs about 20 ms. The unit-test fixtures
 (`withRosterStarters` in `tests/helpers/gameState.ts`) keep the legacy "first five roster players
 start" lineup for single-step tests.
+
+`TeamResult.exhaustedSeconds` (player-seconds on the floor below `EXHAUSTED_ENERGY` = 40) is a
+diagnostic for the calibration above, not a box score stat.
