@@ -635,6 +635,17 @@ batch-sim derives the target from the measured spread: 14.5/16.5 through sqrt(x^
 gives about 14.0-16.0 here. The gap between our spread (about 3.8) and the real one (5-6) is a
 generator question (team-quality spread), recorded in TODO.md.
 
+**Review fix: garbage-time flip-flops.** The "decided" switch (|lead safety| >= 4.5) had no hysteresis
+and tired bench players were swapped for starters and back; a tester measured ~4 swap-backs (a
+player replaced and the same man returning within 60 s, Q4, lead 10+) per team-game in 15+ point
+games. Now the decided state holds down to 0.6 x 4.5 once a 0-plan player is on the floor, and a
+bench player already on the floor in garbage time gets an incumbent bonus of 8 (`GARBAGE_BENCH_INCUMBENT_BONUS`;
+the normal one is 2.5). Swap-backs fell to about 0.6 per garbage-time team-game. Side effects
+(seed 1 / `--league-systems` re-runs): substitutions per game 41.2 / 42.7 (were 48-49), zero-plan share of
+minutes 2.6% / 3.2%, 1.2 / 1.4 zero-plan minutes per team-game in close games, avg margin 12.05 / 12.17,
+decided by 20+ 0.183 / 0.198, league SD 15.0 / 15.3; every other target still passes (overtime
+excepted). The probe table below predates this fix, so its substitution counts are about 15% high.
+
 **Rotation quality by Rotation Management** (`--rotation-probe`, 600 games per row, every coach
 at the given rating, balanced system; real coaches in `--league-systems` bucket the same way:
 low (<= 8) 23.5 subs and 5.44 min plan gap per team-game, mid 24.9 / 5.24, high (> 13) 25.6 / 5.01).

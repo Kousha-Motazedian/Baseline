@@ -105,11 +105,15 @@ export const GARBAGE_TRAILING_FACTOR = 1.65
 /** Third-quarter garbage time needs this many times the fourth-quarter lead and safety. */
 export const GARBAGE_EARLY_FACTOR = 1.5
 /** Once the bench is mostly in, the lead and safety only have to stay at this share of the entry values. */
-export const GARBAGE_EXIT_FACTOR = 0.6
+export const GARBAGE_EXIT_FACTOR = 0.5
 /** Garbage time counts as under way when at least this many players on the floor are bench players. */
 export const GARBAGE_IN_PROGRESS_BENCH = 4
 /** Players the plan gives no minutes stay out of garbage time until |lead safety| reaches this (game over). */
 export const GARBAGE_DECIDED_SAFETY = 4.5
+/** Incumbent bonus of a bench player on the floor in garbage time (hysteresis against tiredness flip-flops). */
+export const GARBAGE_BENCH_INCUMBENT_BONUS = 8
+/** Once one of them is on the floor, the game stays "decided" down to this share of that safety. */
+export const GARBAGE_DECIDED_EXIT_FACTOR = 0.5
 /** Utility cost of those players before the game is decided. */
 export const GARBAGE_IDLE_COST = 12
 /** Utility per rotation-order step in garbage time (deepest first). */

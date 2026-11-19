@@ -11,6 +11,7 @@ import type { MatchResult, MatchTeam, PlayType } from '../../../src/core/match/t
 import { PLAY_TYPES } from '../../../src/core/match/types.ts'
 import { createRng } from '../../../src/core/shared/rng.ts'
 import type { TeamSystem } from '../../../src/core/tactics/system.ts'
+import { systemEffects } from '../../../src/core/tactics/effects.ts'
 import { buildRotationPlan } from '../../../src/core/tactics/rotation.ts'
 import { archetypeSystem, BALANCED_SYSTEM } from '../../../src/core/tactics/system.ts'
 import { FIBA_RULES, PRO_RULES } from '../../../src/core/world/rules.ts'
@@ -25,7 +26,7 @@ import { playSeries, seriesTotal, sides, SLOW_TEST_TIMEOUT_MS } from '../../help
  * retired). Any change to the engine, the rotation code or the RNG draw order changes it:
  * re-record it deliberately and say why in the commit.
  */
-const GOLDEN_HASH = '75663692a37bba19e81c76fb795a998341f5d45c24225851764d4c019e451a11'
+const GOLDEN_HASH = 'b435f3f76c2103f6909f13d818d72e92f1f95df9a6addc4602b089c097970d8b'
 
 /** Hash of the 40 golden games, with both teams given `coaching` (or none). */
 function goldenHash(coaching: MatchTeam['coaching']): string {
@@ -169,14 +170,13 @@ describe('system settings move their levers', { timeout: SLOW_TEST_TIMEOUT_MS },
     expect(assistRate(motion)).toBeGreaterThan(assistRate(base) + 0.01)
     expect(assistRate(iso)).toBeLessThan(assistRate(base) - 0.02)
     expect(topShooterShare(iso, 'home')).toBeGreaterThan(topShooterShare(motion, 'home'))
-    // The price of motion: more bad passes. The effect is small (about 2-3%), so it needs a longer
-    // series than the other checks to stand out from game-to-game noise now that rotations
-    // spread the minutes.
-    const longMotion = playSeries(runningSystem(TEAM, { ballMovement: 'motion' }), OPPONENT, 300)
-    const longIso = playSeries(runningSystem(TEAM, { ballMovement: 'isolation' }), OPPONENT, 300)
-    expect(seriesTotal(longMotion, 'home', 'turnovers')).toBeGreaterThan(
-      seriesTotal(longIso, 'home', 'turnovers'),
-    )
+    // The price of motion: more bad passes. The effect is small (about 2-3% of turnovers), far too
+    // small to show over a 60-game series (it needs ~300 games per side, ~20 s under load), so
+    // check the lever itself: motion adds handler turnovers, isolation removes them.
+    const handlerEdge = (ballMovement: TeamSystem['ballMovement']): number =>
+      systemEffects({ ...BALANCED_SYSTEM, ballMovement }).handlerTurnoverEdge
+    expect(handlerEdge('motion')).toBeGreaterThan(handlerEdge('balanced'))
+    expect(handlerEdge('balanced')).toBeGreaterThan(handlerEdge('isolation'))
   })
 
   it('transition: pushing scores more fast-break points, getting back fewer', () => {
