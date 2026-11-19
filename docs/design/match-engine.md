@@ -638,7 +638,7 @@ generator question (team-quality spread), recorded in TODO.md.
 **Review fix: garbage-time flip-flops.** The "decided" switch (|lead safety| >= 4.5) had no hysteresis
 and tired bench players were swapped for starters and back; a tester measured ~4 swap-backs (a
 player replaced and the same man returning within 60 s, Q4, lead 10+) per team-game in 15+ point
-games. Now the decided state holds down to 0.6 x 4.5 once a 0-plan player is on the floor, and a
+games. Now the decided state holds down to 0.5 x 4.5 (`GARBAGE_DECIDED_EXIT_FACTOR` 0.5) once a 0-plan player is on the floor, and a
 bench player already on the floor in garbage time gets an incumbent bonus of 8 (`GARBAGE_BENCH_INCUMBENT_BONUS`;
 the normal one is 2.5). Swap-backs fell to about 0.6 per garbage-time team-game. Side effects
 (seed 1 / `--league-systems` re-runs): substitutions per game 41.2 / 42.7 (were 48-49), zero-plan share of
@@ -650,20 +650,24 @@ excepted). The probe table below predates this fix, so its substitution counts a
 at the given rating, balanced system; real coaches in `--league-systems` bucket the same way:
 low (<= 8) 23.5 subs and 5.44 min plan gap per team-game, mid 24.9 / 5.24, high (> 13) 25.6 / 5.01).
 
-| Rotation Management / Game Management | Subs / game | Plan gap (min) | Zero-plan share | Exhausted (min on floor under 40 energy / team-game) |
-| ------------------------------------- | ----------- | -------------- | --------------- | ---------------------------------------------------- |
-| 1 / 10.5                              | 39.8        | 5.47           | 0.044           | 5.0                                                  |
-| 10.5 / 10.5                           | 47.9        | 4.98           | 0.045           | 0.6                                                  |
-| 20 / 10.5                             | 54.6        | 4.76           | 0.049           | 0.0                                                  |
-| 10.5 / 1                              | 53.6        | 6.44           | 0.057           | 1.2                                                  |
-| 10.5 / 20                             | 45.0        | 5.16           | 0.041           | 0.7                                                  |
+| Rotation Management / Game Management | Subs / game | Plan gap (min) | Exhausted (min on floor under 40 energy / team-game) |
+| ------------------------------------- | ----------- | -------------- | ---------------------------------------------------- |
+| 1 / 10.5                              | 33.6        | 5.86           | 5.8                                                  |
+| 10.5 / 10.5                           | 41.5        | 5.23           | 0.7                                                  |
+| 20 / 10.5                             | 46.9        | 5.16           | 0.1                                                  |
+| 10.5 / 1                              | 45.6        | 6.85           | -                                                    |
+| 10.5 / 20                             | 37.8        | 5.51           | -                                                    |
 
-A high Rotation Management coach tracks the plan better and rests players before they are
-exhausted (about 5 minutes per game of play under 40 energy at Rotation Management 1, none at 20) with roughly 40-55 substitutions in every case. Before this retune (a review finding: the
-engine had only ever run a neutral coach, and the bridge from a real coach did not exist) the
-same probe gave 44 / 65 / 86 substitutions at 1 / 10.5 / 20, so a sharp coach churned twice as
-much for almost no better tracking. A low Game Management coach tracks the plan worst (6.4
-minutes) and sits and returns his stars poorly; a high one gambles on fouls.
+(Tester's `--rotation-probe`, seed 1, after the swap-back fix.) A high Rotation Management coach
+tracks the plan better and rests players before they are exhausted (about 6 minutes per team-game
+of play under 40 energy at Rotation Management 1, almost none at 20). **User decision:** a forced
+Rotation Management 1 coach at about 34 substitutions per game sits below the 40-55 band and that
+is accepted: the band applies league-wide (a league of real coaches is about 41), and a poor
+rotation manager rides his starters. Before the M1 retune (a review finding: the engine had only
+ever run a neutral coach, and the bridge from a real coach did not exist) the probe gave 44 / 65 /
+86 substitutions at 1 / 10.5 / 20, so a sharp coach churned twice as much for almost no better
+tracking. A low Game Management coach tracks the plan worst (6.85 minutes) and sits and returns
+his stars poorly; a high one gambles on fouls.
 
 What was tuned (`tuning.ts`, `tactics/rotationTuning.ts`):
 
@@ -673,7 +677,7 @@ What was tuned (`tuning.ts`, `tactics/rotationTuning.ts`):
   30-33.
 - **Garbage time** (rotations.md section 8): fourth quarter only (the third needs 1.5x the lead
   and safety), entry at a 10-point lead and safety 2.0 (GM 1) to 1.2 (GM 20), hysteresis (once
-  four bench players are on the floor it holds down to 60% of those), the bench in rotation order
+  four bench players are on the floor it holds down to 50% of those, `GARBAGE_EXIT_FACTOR`, which was 0.6 until the swap-back fix changed it to 0.5), the bench in rotation order
   first, and players the plan gives 0 minutes stay out until |lead safety| reaches 4.5 (the game
   is over). `GARBAGE_TRAILING_FACTOR` 1.65: the trailing coach concedes later than the leader.
   Together they cut the end-of-bench share from ~15% (second-half 12-point leads, deepest first,

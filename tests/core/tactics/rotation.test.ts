@@ -326,7 +326,7 @@ describe('garbage time', () => {
 
   it('has hysteresis: with the bench already in, a lead sliding below the entry lead stays garbage', () => {
     // A lead of 8 with safety 1.4 is under the entry thresholds (10 and 1.6 at average Game
-    // Management) but over 60% of them.
+    // Management) but over 50% of them.
     const hovering = { period: 4, clock: 400, lead: 8, leadSafety: 1.4 }
     const bench = plan.order.slice(4, 9)
     expect(isGarbageTime(ctxOf(players, plan, { ...hovering, onCourt: plan.starters }))).toBe(false)
