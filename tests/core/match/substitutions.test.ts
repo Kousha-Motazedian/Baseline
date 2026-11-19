@@ -45,7 +45,7 @@ describe('opening five and coach context', () => {
 describe('applying substitutions', () => {
   it('logs "X checks in for Y" and never fields a disqualified or on-court player', () => {
     const game = makeGameState({ home: makeFlatTeam('A', 10), away: makeFlatTeam('B', 10) })
-    // Tire the starters so the (stub) coach wants to sub; disqualify one bench player.
+    // Tire the starters so the coach wants to sub; disqualify one bench player.
     for (const p of game.home.onCourt) game.home.energy.set(p.id, 20)
     const banned = game.home.team.roster[5]
     if (!banned) throw new Error('no bench')

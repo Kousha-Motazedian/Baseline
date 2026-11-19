@@ -16,8 +16,9 @@ import {
 import type { PlayType } from './types.ts'
 
 /**
- * Situational modifiers (game-day form, clutch composure, the road crowd and fatigue). They apply to BOTH ends of the floor: an offensive player's good day is offset by a
- * defender's good day, so neither side gets a systematic boost from these effects.
+ * Situational modifiers (game-day form, clutch composure, the road crowd and fatigue). They apply
+ * to BOTH ends of the floor: an offensive player's good day is offset by a defender's good day,
+ * so neither side gets a systematic boost from these effects.
  */
 
 /**

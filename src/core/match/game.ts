@@ -86,6 +86,7 @@ function toTeamResult(team: TeamState): TeamResult {
     fastBreakPoints: team.fastBreakPoints,
     pointsOffTurnovers: team.pointsOffTurnovers,
     teamRebounds: team.teamRebounds,
+    exhaustedSeconds: team.exhaustedSeconds,
     players: team.team.roster.map((p) => team.lines.get(p.id)).filter((l) => l !== undefined),
   }
 }

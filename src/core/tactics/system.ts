@@ -112,12 +112,14 @@ export const SYSTEM_ARCHETYPES: readonly SystemArchetype[] = [
 /**
  * Each archetype's core settings. Each is a coherent identity, so the league gets a mix of styles:
  * - Pace and Space: run, spread the floor and fire threes off drive-and-kick and ball movement.
- * - Grit and Grind: slow it down, pound the ball inside, crash the glass, sit back on defense (conservative pressure) and wall off the paint.
+ * - Grit and Grind: slow it down, pound the ball inside, crash the glass, sit back on defense
+ *   (conservative pressure) and wall off the paint.
  * - Motion Offense: cuts, screens and the extra pass; a deep bench that shares minutes.
  * - Star-Driven: give the ball to the best player in pick-and-roll and isolation; ride the starters.
  * - Defensive Disciplinarian: grind out possessions, always get back, pressure the ball and run
  *   shooters off the line.
- * - Small-Ball: fast and switchy, threes and pick-and-roll, gamble for steals and push off them (leaving the glass to balanced).
+ * - Small-Ball: fast and switchy, threes and pick-and-roll, gamble for steals and push off them
+ *   (offensive rebounding stays balanced).
  */
 const ARCHETYPE_SYSTEMS: Record<SystemArchetype, TeamSystem> = {
   paceAndSpace: {
