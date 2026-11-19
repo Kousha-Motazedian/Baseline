@@ -496,7 +496,7 @@ describe('independent offensive and defensive form (tester round 3)', () => {
     game.home.form.set(player.id, { offense: 0.25, defense: -0.1 })
     expect(formEdge(game.home, player, 'offense')).toBe(0.25)
     expect(formEdge(game.home, player, 'defense')).toBe(-0.1)
-    // Home player, not clutch, no blowout: the personal edge is just the form at that end.
+    // Home player, not clutch, fresh: the personal edge is just the form at that end.
     expect(personalEdge(game, game.home, player, 'offense')).toBeCloseTo(0.25, 12)
     expect(personalEdge(game, game.home, player, 'defense')).toBeCloseTo(-0.1, 12)
   })

@@ -92,7 +92,7 @@ export function youthBias(player: Player, worksWithYouth: number): number {
   return YOUTH_RATING_POINTS * normalizeRating(worksWithYouth)
 }
 
-/** How a coach rates players: his Player Evaluation and Works With Youth (neutral without a coach). */
+/** How a coach rates players: Player Evaluation and Works With Youth (neutral without a coach). */
 export interface Evaluator {
   playerEvaluation: number
   worksWithYouth: number

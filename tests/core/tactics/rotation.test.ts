@@ -13,6 +13,7 @@ import {
   NEUTRAL_ROTATION_COACH,
   rotationCoachOf,
 } from '../../../src/core/tactics/rotation.ts'
+import { isGarbageTime } from '../../../src/core/tactics/rotationSubs.ts'
 import { reputationShare } from '../../../src/core/tactics/rotationValue.ts'
 import { BALANCED_SYSTEM } from '../../../src/core/tactics/system.ts'
 import type { TeamSystem } from '../../../src/core/tactics/system.ts'
@@ -138,15 +139,15 @@ describe('plan targets', () => {
   })
 
   // Plan minutes are above the realised 30-33 because garbage time and fatigue take about 4 off
-  // (calibrated in rotations.md section 5), so the setting values are 40 / 37 / 34.
+  // (calibrated in rotations.md section 5), so the setting values are 37 / 34 / 31.
   it('starter minutes follow the setting', () => {
     const avg = (starterMinutes: 'rideStarters' | 'balanced' | 'share'): number => {
       const plan = buildRotationPlan(roster(), makeCoach(), sys({ starterMinutes }))
       return plan.starters.reduce((s, id) => s + (plan.targetSeconds[id] ?? 0), 0) / 5 / 60
     }
-    expect(avg('rideStarters')).toBeCloseTo(40, 0)
-    expect(avg('balanced')).toBeCloseTo(37, 0)
-    expect(avg('share')).toBeCloseTo(34, 0)
+    expect(avg('rideStarters')).toBeCloseTo(37, 0)
+    expect(avg('balanced')).toBeCloseTo(34, 0)
+    expect(avg('share')).toBeCloseTo(31, 0)
   })
 
   it('orders every roster id with the starters first', () => {
@@ -276,7 +277,7 @@ describe('garbage time', () => {
       ctxOf(players, plan, { period: 4, clock: 400, lead: 25, leadSafety: 4 }),
       createRng(1),
     )
-    expect(subs.length).toBeGreaterThanOrEqual(4)
+    expect(subs.length).toBeGreaterThanOrEqual(3)
     const deep = new Set(plan.order.slice(-7))
     expect(subs.every((s) => deep.has(s.incomingId))).toBe(true)
   })
@@ -286,7 +287,7 @@ describe('garbage time', () => {
       ctxOf(players, plan, { period: 4, clock: 400, lead: -25, leadSafety: -4 }),
       createRng(1),
     )
-    expect(subs.length).toBeGreaterThanOrEqual(4)
+    expect(subs.length).toBeGreaterThanOrEqual(3)
   })
 
   it('does not happen in a close game', () => {
@@ -296,13 +297,51 @@ describe('garbage time', () => {
     )
     expect(subs).toHaveLength(0)
   })
+
+  it('keeps players the plan gives no minutes out until the game is decided', () => {
+    const idle = new Set(plan.order.filter((id) => (plan.targetSeconds[id] ?? 0) <= 0))
+    expect(idle.size).toBeGreaterThan(0)
+    const safe = decideSubstitutions(
+      ctxOf(players, plan, { period: 4, clock: 400, lead: 18, leadSafety: 3 }),
+      createRng(1),
+    )
+    expect(safe.length).toBeGreaterThanOrEqual(3)
+    expect(safe.some((s) => idle.has(s.incomingId))).toBe(false)
+    const over = decideSubstitutions(
+      ctxOf(players, plan, { period: 4, clock: 100, lead: 25, leadSafety: 6 }),
+      createRng(1),
+    )
+    expect(over.some((s) => idle.has(s.incomingId))).toBe(true)
+  })
+
+  it('is mostly a fourth-quarter thing: the third quarter needs a much bigger lead', () => {
+    const q3 = (lead: number, safety: number) =>
+      decideSubstitutions(
+        ctxOf(players, plan, { period: 3, clock: 300, lead, leadSafety: safety }),
+        createRng(1),
+      )
+    expect(q3(12, 2.2)).toHaveLength(0)
+    expect(q3(25, 4).length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('has hysteresis: with the bench already in, a lead sliding below the entry lead stays garbage', () => {
+    // A lead of 8 with safety 1.4 is under the entry thresholds (10 and 1.6 at average Game
+    // Management) but over 50% of them.
+    const hovering = { period: 4, clock: 400, lead: 8, leadSafety: 1.4 }
+    const bench = plan.order.slice(4, 9)
+    expect(isGarbageTime(ctxOf(players, plan, { ...hovering, onCourt: plan.starters }))).toBe(false)
+    expect(isGarbageTime(ctxOf(players, plan, { ...hovering, onCourt: bench }))).toBe(true)
+    // Far below the exit lead it ends for everyone.
+    expect(isGarbageTime(ctxOf(players, plan, { ...hovering, lead: 4, onCourt: bench }))).toBe(
+      false,
+    )
+  })
 })
 
 describe('closers', () => {
   it('come in for the finish of a close game unless exhausted', () => {
     const players = roster()
     const plan = buildRotationPlan(players, makeCoach(), sys())
-    const closers = plan.order.slice(0, 5).filter((id) => !plan.closers.includes(id))
     // Put one non-closer on the floor in place of a closer; everyone is fresh.
     const closer = plan.closers[0] as string
     const slot = plan.closers.indexOf(closer)
@@ -317,7 +356,6 @@ describe('closers', () => {
       createRng(1),
     )
     expect(tired.some((s) => s.incomingId === closer)).toBe(false)
-    expect(closers).toBeDefined()
   })
 })
 

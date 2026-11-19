@@ -108,6 +108,11 @@ export interface TeamResult {
    * offense kept the ball without any player grabbing a rebound.
    */
   teamRebounds: number
+  /**
+   * Player-seconds spent on the floor below EXHAUSTED_ENERGY: a diagnostic of how well the coach
+   * rests players (rotation calibration), not a box score stat.
+   */
+  exhaustedSeconds: number
   players: PlayerLine[]
 }
 

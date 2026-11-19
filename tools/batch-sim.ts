@@ -6,7 +6,8 @@
  *   npm run sim:batch -- --seed 42         different random league
  *   npm run sim:batch -- --balance         also run the offense-vs-defense balance tests
  *   npm run sim:batch -- --average         uniform average teams (no stars) instead of league teams
- *   npm run sim:batch -- --league-systems  every league team runs a random archetype system
+ *   npm run sim:batch -- --league-systems  every league team has a generated head coach (real attributes)
+ *   npm run sim:batch -- --rotation-probe  substitutions and plan gap with every coach at RM 1 / 10.5 / 20 (and GM 1 / 20)
  *   npm run sim:batch -- --systems         report-only system/fit/coaching experiments
  *   npm run sim:batch -- --fit-stats       raw fit mean/SD per system option (fit centering data)
  *
@@ -33,14 +34,17 @@ import type { Rng } from '../src/core/shared/rng.ts'
 import { createRng } from '../src/core/shared/rng.ts'
 import { PRO_RULES } from '../src/core/world/rules.ts'
 import type { HeadCoach } from '../src/core/staff/types.ts'
+import { generateCoach } from '../src/core/staff/coachGenerator.ts'
 import { coachingInputs } from '../src/core/tactics/coaching.ts'
+import { matchTeamFor } from '../src/core/tactics/matchTeam.ts'
+import type { RotationPlan } from '../src/core/tactics/rotation.ts'
+import { buildRotationPlan } from '../src/core/tactics/rotation.ts'
 import type { FitDemand } from '../src/core/tactics/fit.ts'
 import { FIT_DEMANDS, fitBasis, lineupFit, rawFit } from '../src/core/tactics/fit.ts'
 import type { SystemSetting, TeamSystem } from '../src/core/tactics/system.ts'
 import {
   archetypeSystem,
   BALANCED_SYSTEM,
-  generateSystem,
   SETTING_OPTIONS,
   SYSTEM_ARCHETYPES,
 } from '../src/core/tactics/system.ts'
@@ -76,7 +80,6 @@ interface Totals {
   pointsOffTurnovers: number
   /** Sum over team-games of the team's top scorer's points. */
   topScorerPoints: number
-  /** Games in which some player scored 40+ (and 50+). */
   /** Sum over team-games of the starters' average minutes. */
   starterMinutes: number
   /** Sum over team-games of the most minutes any player played. */
@@ -86,16 +89,64 @@ interface Totals {
   /** Sum over team-games of the team's rebound and assist leaders' totals. */
   topRebounds: number
   topAssists: number
+  /** Games in which some player scored 40+ (and 50+). */
   games40: number
+  games50: number
   /** Sum of the winning margins, and games decided by 20 or more. */
   winMargin: number
+  /** Rotation checks (see addRotation): subs, plan gap and end-of-bench minutes. */
+  rotation: RotationTotals
+  blowouts: number
   /** Sum and sum of squares of the signed (home - away) margin. */
   marginSum: number
   marginSquares: number
-  blowouts: number
-  games50: number
   playTypeAttempts: Record<PlayType, number>
   playTypeMakes: Record<PlayType, number>
+}
+
+/** Rotation-quality sums, overall and by the coach's Rotation Management bucket. */
+interface RotationTotals {
+  teamGames: number
+  /** Substitutions ("X checks in for Y") by both teams, summed over games. */
+  subs: number
+  games: number
+  /** Player-seconds on the floor below 40 energy. */
+  exhaustedSeconds: number
+  /** Seconds played by players the plan gives 0 minutes (the end of the bench), and all player seconds. */
+  endBenchSeconds: number
+  teamSeconds: number
+  /** The same end-of-bench seconds in games decided by fewer than 10 points, and those team-games. */
+  closeEndBenchSeconds: number
+  closeTeamGames: number
+  /** Sum over team-games of the mean |played - planned| minutes of players with planned minutes. */
+  planGap: number
+  /** Team-games, subs and plan gap by Rotation Management bucket (low, mid, high). */
+  buckets: { teamGames: number; subs: number; planGap: number; exhausted: number }[]
+}
+
+/** Rotation Management bucket edges: low is at most 8, high is above 13. */
+const RM_LOW = 8
+const RM_HIGH = 13
+
+/** Index of the Rotation Management bucket for a rating. */
+function rmBucket(rating: number): number {
+  return rating <= RM_LOW ? 0 : rating > RM_HIGH ? 2 : 1
+}
+
+/** An all-zero rotation tally. */
+function emptyRotationTotals(): RotationTotals {
+  return {
+    teamGames: 0,
+    subs: 0,
+    games: 0,
+    exhaustedSeconds: 0,
+    endBenchSeconds: 0,
+    teamSeconds: 0,
+    closeEndBenchSeconds: 0,
+    closeTeamGames: 0,
+    planGap: 0,
+    buckets: [0, 1, 2].map(() => ({ teamGames: 0, subs: 0, planGap: 0, exhausted: 0 })),
+  }
 }
 
 /** Creates an all-zero totals object. */
@@ -136,6 +187,7 @@ function emptyTotals(): Totals {
     topAssists: 0,
     games40: 0,
     winMargin: 0,
+    rotation: emptyRotationTotals(),
     marginSum: 0,
     marginSquares: 0,
     blowouts: 0,
@@ -187,6 +239,52 @@ function addTeamGame(
   }
 }
 
+/** The rotation plan a team plays with: its own, or the one the engine builds when it has none. */
+function planOf(team: MatchTeam): RotationPlan {
+  return (
+    team.rotation ??
+    buildRotationPlan(team.roster, undefined, team.coaching?.system ?? BALANCED_SYSTEM)
+  )
+}
+
+/** Adds one team-game's rotation numbers (subs, plan gap, end-of-bench minutes). */
+function addRotation(totals: Totals, result: MatchResult, team: MatchTeam, side: TeamResult): void {
+  const r = totals.rotation
+  const plan = planOf(team)
+  const margin = Math.abs(result.home.points - result.away.points)
+  const subs = result.playByPlay.filter(
+    (e) => e.teamId === side.teamId && e.text.includes(' checks in for '),
+  ).length
+  let gap = 0
+  let planned = 0
+  for (const line of side.players) {
+    r.teamSeconds += line.secondsPlayed
+    // The end of the bench: players the plan gives no minutes at all.
+    if ((plan.targetSeconds[line.playerId] ?? 0) <= 0) {
+      r.endBenchSeconds += line.secondsPlayed
+      if (margin < 10) r.closeEndBenchSeconds += line.secondsPlayed
+    }
+    const target = plan.targetSeconds[line.playerId] ?? 0
+    if (target > 0) {
+      gap += Math.abs(line.secondsPlayed - target) / 60
+      planned += 1
+    }
+  }
+  const meanGap = planned > 0 ? gap / planned : 0
+  r.teamGames += 1
+  r.exhaustedSeconds += side.exhaustedSeconds
+  r.subs += subs
+  r.planGap += meanGap
+  if (margin < 10) r.closeTeamGames += 1
+  const bucket = r.buckets[rmBucket(team.rotationCoach?.rotationManagement ?? 10.5)]
+  if (bucket) {
+    bucket.teamGames += 1
+    bucket.subs += subs
+    bucket.planGap += meanGap
+    bucket.exhausted += side.exhaustedSeconds
+  }
+}
+
 /** Game length in minutes, including overtime. */
 function gameMinutes(result: MatchResult): number {
   const overtimes = result.periodsPlayed - PRO_RULES.periods
@@ -222,13 +320,18 @@ function addTopScorers(totals: Totals, result: MatchResult): void {
 }
 
 /** Adds both teams of a finished game to the totals. */
-function addGame(totals: Totals, result: MatchResult): void {
+function addGame(totals: Totals, result: MatchResult, teams: Record<string, MatchTeam> = {}): void {
   const minutes = gameMinutes(result)
   totals.games += 1
   if (result.periodsPlayed > PRO_RULES.periods) totals.overtimeGames += 1
   addTeamGame(totals, result.home, result.away, minutes)
   addTeamGame(totals, result.away, result.home, minutes)
   addTopScorers(totals, result)
+  for (const side of [result.home, result.away]) {
+    const team = teams[side.teamId]
+    if (team) addRotation(totals, result, team, side)
+  }
+  totals.rotation.games += 1
   const margin = Math.abs(result.home.points - result.away.points)
   totals.winMargin += margin
   totals.marginSum += result.home.points - result.away.points
@@ -382,6 +485,34 @@ function metrics(t: Totals): Metric[] {
       max: 12.9,
       digits: 2,
     },
+    // Rotation quality (rotations.md): real NBA games have about 40-50 substitutions between both
+    // teams, and the end of the bench (players with no planned minutes) plays about 3-6% of the minutes.
+    {
+      label: 'Substitutions / game (both teams)',
+      value: t.rotation.subs / t.rotation.games,
+      min: 40,
+      max: 55,
+      digits: 1,
+    },
+    {
+      label: 'Zero-plan players, share of min',
+      value: t.rotation.endBenchSeconds / t.rotation.teamSeconds,
+      min: 0,
+      max: 0.06,
+      digits: 3,
+    },
+    {
+      label: 'Zero-plan min, games < 10 pts',
+      value: t.rotation.closeEndBenchSeconds / 60 / Math.max(1, t.rotation.closeTeamGames),
+      min: 0,
+      max: 2,
+      digits: 2,
+    },
+    {
+      label: 'Plan gap (min / player)',
+      value: t.rotation.planGap / t.rotation.teamGames,
+      digits: 2,
+    },
     {
       // Real league-game spread: average |margin| 12.4 ~ 0.8 x SD, so SD ~ 15.5. It includes the
       // spread in team quality, which identical teams lack (see the identical-teams target).
@@ -438,6 +569,7 @@ function metricRow(m: Metric): string {
 function printReport(t: Totals): void {
   printMetrics(`${t.games} games, ${t.teamGames} team-games`, metrics(t))
 
+  printRotationBuckets(t)
   console.log(`\n${'Play type'.padEnd(12)} ${'Share of FGA'.padStart(12)} ${'FG%'.padStart(7)}`)
   for (const type of PLAY_TYPES) {
     const attempts = t.playTypeAttempts[type]
@@ -445,6 +577,22 @@ function printReport(t: Totals): void {
     const pct = (t.playTypeMakes[type] / attempts).toFixed(3)
     console.log(`${type.padEnd(12)} ${share.padStart(12)} ${pct.padStart(7)}`)
   }
+}
+
+/** Prints substitutions per game and the plan gap by the coach's Rotation Management bucket. */
+function printRotationBuckets(t: Totals): void {
+  console.log(
+    '\nRotation Management bucket   team-games   subs / team-game   plan gap (min)   exhausted min/game',
+  )
+  const names = ['low (<= 8)', 'mid (8-13)', 'high (> 13)']
+  t.rotation.buckets.forEach((b, i) => {
+    if (b.teamGames === 0) return
+    const subs = (b.subs / b.teamGames).toFixed(1)
+    const gap = (b.planGap / b.teamGames).toFixed(2)
+    console.log(
+      `${(names[i] ?? '').padEnd(28)} ${String(b.teamGames).padStart(10)} ${subs.padStart(18)} ${gap.padStart(16)} ${(b.exhausted / b.teamGames / 60).toFixed(1).padStart(19)}`,
+    )
+  })
 }
 
 /** Prints a list of metrics under a header. */
@@ -470,8 +618,8 @@ function calibrationTeam(rng: Rng, id: string): MatchTeam {
 }
 
 /**
- * Every league team runs a random archetype system with an average coach on his own system
- * (`--league-systems`). Set once in main(). Off by default, so the targets check today's engine.
+ * Every league team has a generated head coach (real attributes) running his own preferred
+ * system, with his rotation plan and substitution attributes (`--league-systems`). Set once in main(). Off by default, so the targets check today's engine.
  */
 let useLeagueSystems = false
 
@@ -486,12 +634,12 @@ function averageCoaching(system: TeamSystem): TeamCoaching {
 }
 
 /**
- * A random archetype system for game `index`, from its own RNG stream so the teams themselves are
- * the same with or without --league-systems.
+ * A generated head coach (real attributes, own preferred system) for game `index`, from its own
+ * RNG stream so the teams themselves are the same with or without --league-systems.
  */
-function randomSystem(seed: number, index: number, side: number): TeamSystem {
+function randomCoach(seed: number, index: number, side: number): HeadCoach {
   const rng = createRng(seed * 300_007 + index * 2 + side)
-  return generateSystem(rng, rng.pick(SYSTEM_ARCHETYPES))
+  return generateCoach(rng, { id: `coach-${index}-${side}` })
 }
 
 /** Generates the two teams for game `index` of a league seeded with `seed`. */
@@ -501,8 +649,8 @@ function calibrationPair(seed: number, index: number): [MatchTeam, MatchTeam] {
   const b = calibrationTeam(rng, 'B')
   if (!useLeagueSystems) return [a, b]
   return [
-    withCoaching(a, averageCoaching(randomSystem(seed, index, 0))),
-    withCoaching(b, averageCoaching(randomSystem(seed, index, 1))),
+    matchTeamFor(a, { coach: randomCoach(seed, index, 0) }),
+    matchTeamFor(b, { coach: randomCoach(seed, index, 1) }),
   ]
 }
 
@@ -556,20 +704,63 @@ function qualitySpread(seed: number, pairs: number, gamesPer: number, noiseSd: n
   return Math.sqrt(Math.max(0, variance))
 }
 
+/**
+ * Plays the calibration league with every coach forced to one Rotation Management and Game
+ * Management (`--rotation-probe`), to see how those attributes change substitutions and minutes.
+ */
+function runRotationProbe(games: number, seed: number): void {
+  console.log('\nRotation probe (every coach at the given rating, balanced system)')
+  console.log('RM     GM     subs/game   plan gap   zero-plan   exhausted min/team-game')
+  for (const [rm, gm] of [
+    [1, 10.5],
+    [10.5, 10.5],
+    [20, 10.5],
+    [10.5, 1],
+    [10.5, 20],
+  ] as const) {
+    const totals = emptyTotals()
+    for (let i = 0; i < games; i++) {
+      const [a, b] = calibrationPair(seed, i)
+      const coached = (team: MatchTeam): MatchTeam => ({
+        ...team,
+        rotationCoach: { rotationManagement: rm, gameManagement: gm },
+      })
+      const home = coached(a)
+      const away = coached(b)
+      addGame(totals, play(home, away, i, seed), { [home.id]: home, [away.id]: away })
+    }
+    const r = totals.rotation
+    console.log(
+      `${String(rm).padEnd(6)} ${String(gm).padEnd(6)} ${(r.subs / r.games).toFixed(1).padStart(9)} ${(r.planGap / r.teamGames).toFixed(2).padStart(10)} ${(r.endBenchSeconds / r.teamSeconds).toFixed(3).padStart(11)} ${(r.exhaustedSeconds / r.teamGames / 60).toFixed(1).padStart(24)}`,
+    )
+  }
+}
+
 /** Simulates the calibration league: `games` games between freshly generated teams. */
 function runLeague(games: number, seed: number): Totals {
   const totals = emptyTotals()
   for (let i = 0; i < games; i++) {
     const [a, b] = calibrationPair(seed, i)
-    addGame(totals, play(a, b, i, seed))
+    addGame(totals, play(a, b, i, seed), { [a.id]: a, [b.id]: b })
   }
   return totals
 }
 
 /** A copy of a team under a new id (and new player ids), so a team can play itself. */
 function copyTeam(team: MatchTeam, id: string): MatchTeam {
-  const roster = team.roster.map((p, i) => ({ ...p, id: `${id}-p${i + 1}` }))
-  return { ...team, id, roster }
+  const rename = new Map(team.roster.map((p, i) => [p.id, `${id}-p${i + 1}`]))
+  const roster = team.roster.map((p) => ({ ...p, id: rename.get(p.id) ?? p.id }))
+  const renamed = (ids: readonly string[]): string[] => ids.map((pid) => rename.get(pid) ?? pid)
+  const plan = team.rotation
+  const rotation = plan && {
+    starters: renamed(plan.starters),
+    order: renamed(plan.order),
+    closers: renamed(plan.closers),
+    targetSeconds: Object.fromEntries(
+      Object.entries(plan.targetSeconds).map(([pid, seconds]) => [rename.get(pid) ?? pid, seconds]),
+    ),
+  }
+  return { ...team, id, roster, ...(rotation ? { rotation } : {}) }
 }
 
 /** Population standard deviation. */
@@ -1032,6 +1223,8 @@ function main(): void {
   )
   if (process.argv.includes('--balance'))
     runBalance(numberArg('balance-games', Math.max(games, BALANCE_MIN_GAMES)), seed)
+  if (process.argv.includes('--rotation-probe'))
+    runRotationProbe(numberArg('probe-games', 400), seed)
   if (process.argv.includes('--systems')) {
     // The experiments compare systems against no system, so they never use --league-systems teams.
     useLeagueSystems = false

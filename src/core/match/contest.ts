@@ -88,9 +88,9 @@ export function pickContester(rng: Rng, contesters: Contesters, playType: PlayTy
 
 /**
  * The core matchup edge in log-odds: offensive skill minus defensive skill, both normalized.
- * The two weights are kept nearly equal on purpose (0.70 vs 0.75): if every player in the league got uniformly better
- * at both ends, the edges cancel and scoring stays put, instead of inflating like it would if the
- * offense's skill counted for more than the defense's.
+ * The two weights are kept nearly equal on purpose (0.70 vs 0.75): if every player in the league
+ * got uniformly better at both ends, the edges nearly cancel and scoring barely moves, instead of
+ * inflating like it would if the offense's skill counted for much more than the defense's.
  */
 export function matchupEdge(offenseRating: number, defenseRating: number): number {
   return (

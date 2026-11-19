@@ -4,6 +4,7 @@ import type { LeagueRules } from '../world/rules.ts'
 import { PRO_RULES } from '../world/rules.ts'
 import type { HeadCoach } from '../staff/types.ts'
 import type { RotationCoach, RotationOverride, RotationPlan } from './rotationTypes.ts'
+import { NEUTRAL_ROTATION_COACH } from './rotationTypes.ts'
 import {
   BENCH_DECAY,
   LINEUP_CANDIDATES,
@@ -20,8 +21,9 @@ import type { TeamSystem } from './system.ts'
 /** The 1-20 attributes of a coach that matter to the in-game rotation (neutral without a coach). */
 export function rotationCoachOf(coach: HeadCoach | undefined): RotationCoach {
   return {
-    rotationManagement: coach?.attributes.rotationManagement ?? 10.5,
-    gameManagement: coach?.attributes.gameManagement ?? 10.5,
+    rotationManagement:
+      coach?.attributes.rotationManagement ?? NEUTRAL_ROTATION_COACH.rotationManagement,
+    gameManagement: coach?.attributes.gameManagement ?? NEUTRAL_ROTATION_COACH.gameManagement,
   }
 }
 
@@ -41,9 +43,10 @@ export function bestFive(candidates: readonly Player[], value: (p: Player) => nu
   const size = Math.min(POSITIONS.length, pool.length)
   // Each player's value and slot costs are computed once up front: the search below visits
   // thousands of assignments and must not recompute fit or ratings in its inner loop.
-  const scores = pool.map((player) =>
-    POSITIONS.map((position) => value(player) + slotCost(player, position)),
-  )
+  const scores = pool.map((player) => {
+    const base = value(player)
+    return POSITIONS.map((position) => base + slotCost(player, position))
+  })
   let bestOrder: number[] = pool.slice(0, size).map((_, i) => i)
   let bestScore = -Infinity
   const used = new Set<number>()

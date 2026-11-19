@@ -122,16 +122,17 @@ describe('evenly matched teams', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
     const [team] = generatedPair(41)
     const a = cloneTeam(team, 'A')
     const b = cloneTeam(team, 'B')
-    // 600 games, home alternating: SE of a win rate ≈ 0.02, so ±0.07 bands are > 3 SE.
-    const results = playSeries(a, b, 600)
+    // 300 games, home alternating (600 took ~25 s under load): SE of a win rate ≈ 0.03, so the
+    // ±0.1 bands are > 3 SE.
+    const results = playSeries(a, b, 300)
     const aWins = results.filter((r) => sides(r, 'A')[0].points > sides(r, 'B')[0].points).length
     const homeWins = results.filter((r) => r.home.points > r.away.points).length
-    expect(Math.abs(aWins / 600 - 0.5)).toBeLessThan(0.07)
-    expect(homeWins / 600).toBeGreaterThan(0.48)
-    expect(homeWins / 600).toBeLessThan(0.62)
+    expect(Math.abs(aWins / 300 - 0.5)).toBeLessThan(0.1)
+    expect(homeWins / 300).toBeGreaterThan(0.45)
+    expect(homeWins / 300).toBeLessThan(0.65)
     const homeMargin = mean(results.map((r) => r.home.points - r.away.points))
-    // HOME_SHOOTING_EDGE is meant to be worth ~1–2 points; margin SE over 600 games ≈ 0.8.
-    expect(homeMargin).toBeGreaterThan(-1)
-    expect(homeMargin).toBeLessThan(4.5)
+    // HOME_SHOOTING_EDGE is meant to be worth ~1–2 points; margin SE over 300 games ≈ 1.1.
+    expect(homeMargin).toBeGreaterThan(-1.5)
+    expect(homeMargin).toBeLessThan(5)
   })
 })

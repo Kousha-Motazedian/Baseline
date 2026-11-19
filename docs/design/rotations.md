@@ -27,7 +27,7 @@ The head coach builds a **depth chart** and **target minutes** from the roster, 
 - **How he rates players (Player Evaluation).** The coach ranks players by a _perceived value_ that blends what they really bring (their ratings and fit in his system, the same numbers the engine uses) with their **reputation (CA)**. A high-Player Evaluation coach goes mostly by real value; a low one mostly by reputation, so he may start a famous name over a better-fitting role player. This is where CA can affect minutes (never the sim itself), in line with the CA rule in [coaches.md](coaches.md) ("What's already decided").
 - **Works With Youth.** Young players (23 and under) get a bonus or penalty in his perceived value: a low-Works-With-Youth coach sits a promising rookie behind a worse veteran; a high one gives him real minutes.
 - **Rotation depth** (Tight 8 · Normal 9 · Deep 10) sets how many players get regular minutes.
-- **Starter minutes** (Ride the starters · Balanced · Share minutes) sets the PLAN's starter minutes: 40 / 37 / 34 on average (scaled to the league's game length), with the rest spread over the bench by perceived value. The realised minutes land about 4 to 7 below the plan (about 30-33 for a league of mixed settings) because fatigue rests starters, foul trouble sits them, and the garbage time of blowouts takes the leader's starters out; the plan is deliberately higher than the target so the realised average hits the calibration target (section 5).
+- **Starter minutes** (Ride the starters · Balanced · Share minutes) sets the PLAN's starter minutes: 37 / 34 / 31 on average (scaled to the league's game length), with the rest spread over the bench by perceived value. The realised minutes land about 3 to 6 below the plan (about 30-33 for a league of mixed settings) because fatigue rests starters, foul trouble sits them, and the garbage time of blowouts takes the leader's starters out; the plan is deliberately higher than the target so the realised average hits the calibration target (section 5).
 - **Positions.** Starters are the best perceived five that make a valid lineup (one ball handler, at least one big: uses players' positions from [player-roles.md](player-roles.md)). Substitutes come from the same position group, replacing today's "closest height" proxy.
 - **Closers.** The best perceived five for the end of close games (often but not always the starters).
 
@@ -38,7 +38,7 @@ Subs happen at **dead balls** (the engine already checks at each possession star
 - **Normal pattern:** starters open each half; the coach brings bench players in by fatigue and by each player's minutes so far against his target, so the minutes come out close to the plan with game-to-game variation.
 - **Rotation Management** controls how well this works. A high rating subs a player before he's badly tired and keeps minutes close to the plan; a low rating reacts late (players stay on tired) and drifts from the plan.
 - **Foul trouble** (replaces the stopgap): the coach sits a player who reaches a period's foul threshold (pro: 2 in Q1, 3 in Q2, 4 in Q3, 5 in Q4; scaled for FIBA) and brings him back later. Late in close games everyone plays. **Game Management** decides how strictly he follows the rule: a low one sits stars too long; a high one gambles sensibly. The existing "one foul from disqualification, play it safe" caution stays: it's player behaviour, not a stopgap.
-- **Garbage time** (replaces blowout easing): with a big, safe lead (the same lead-safety measure the stopgap uses) both coaches empty their benches, deepest players first. The lower-rated bench does the work the effort penalty used to do.
+- **Garbage time** (replaces blowout easing): with a big, safe lead (the same lead-safety measure the stopgap uses), mostly in the fourth quarter, both coaches go to their benches: the rotation bench first, and players the plan gives no minutes only once the game is decided. The lower-rated bench does the work the effort penalty used to do.
 - **Close games:** in the last minutes of a close game the coach plays his closers regardless of minutes, as long as they're not exhausted.
 - **Disqualifications and injuries** (injuries later) fall back to the depth chart for the replacement.
 
@@ -51,20 +51,22 @@ Subs happen at **dead balls** (the engine already checks at each possession star
 
 ## 5. Calibration targets (batch-sim gains player-level checks)
 
-| Metric                                     | Target (pro)                                   |
-| ------------------------------------------ | ---------------------------------------------- |
-| Starter minutes (team average)             | 30–33                                          |
-| Most minutes on a team, per game           | 34–38                                          |
-| Players with 10+ minutes per team-game     | 8–10                                           |
-| Team top scorer, points per game           | 26–29                                          |
-| Games with a 40+ point scorer              | 10–16%                                         |
-| 50+ point games per game                   | ≤ 0.02                                         |
-| Team leader in rebounds / assists per game | about 10–12 / 7–9                              |
-| League averages (existing targets)         | all still pass                                 |
-| Final-margin spread, identical teams       | derived, about 14.0–16.0 (see match-engine.md) |
-| League games: average margin of victory    | 11.9–12.9 (real 12.4)                          |
-| League games: decided by 20+               | 17–22% (real 19.5%)                            |
-| League games: margin SD                    | 14.5–16.5 (real ~15.5)                         |
+| Metric                                     | Target (pro)                                                     |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| Starter minutes (team average)             | 30–33                                                            |
+| Most minutes on a team, per game           | 34–38                                                            |
+| Players with 10+ minutes per team-game     | 8–10                                                             |
+| Team top scorer, points per game           | 26–29                                                            |
+| Games with a 40+ point scorer              | 10–16%                                                           |
+| 50+ point games per game                   | ≤ 0.02                                                           |
+| Team leader in rebounds / assists per game | about 10–12 / 7–9                                                |
+| League averages (existing targets)         | all still pass                                                   |
+| Final-margin spread, identical teams       | derived, about 14.0–16.0 (see match-engine.md)                   |
+| League games: average margin of victory    | 11.9–12.9 (real 12.4)                                            |
+| League games: decided by 20+               | 17–22% (real 19.5%)                                              |
+| League games: margin SD                    | 14.5–16.5 (real ~15.5)                                           |
+| Substitutions per game (both teams)        | 40–55 (real 40–50)                                               |
+| Players the plan gives 0 min: share of min | ≤ 6% (real 3–6%); ≤ 2 min per team-game in games decided by < 10 |
 
 Also in this step:
 
@@ -95,7 +97,7 @@ Files: `rotationTypes.ts` (contract types), `rotationTuning.ts` (every constant)
 
 **Starters and closers.** Exhaustive search over the top 8 by value, assigning slots PG..C to maximise `value + slotCost`; slotCost is minus the rating points below the player's best position, or -8 if his height rules the slot out. That makes a ball handler and a big appear through the PG and C slots without a hard rule.
 
-**Targets.** Rotation size 8 / 9 / 10 (tight / normal / deep). Starter average 40 / 37 / 34 minutes for ride / balanced / share (scaled to the game length), spread by perceived value at 0.6 min per rating point, capped at +-3. The remaining player-seconds go to the bench with each next player getting 0.75x the previous one's share. Players outside the rotation get 0. With no bench the starters split the game. Targets always sum to the game total.
+**Targets.** Rotation size 8 / 9 / 10 (tight / normal / deep). Starter average 37 / 34 / 31 minutes for ride / balanced / share (scaled to the game length), spread by perceived value at 0.6 min per rating point, capped at +-3. The remaining player-seconds go to the bench with each next player getting 0.75x the previous one's share. Players outside the rotation get 0. With no bench the starters split the game. Targets always sum to the game total.
 
 **Override.** Valid, de-duplicated ids only; starters topped up from the coach's five if fewer than 5; order = starters, then the GM's order, then the coach's; targets exactly as given (missing = 0); closers stay the coach's.
 
@@ -104,15 +106,18 @@ Files: `rotationTypes.ts` (contract types), `rotationTuning.ts` (every constant)
 - normal: `-0.25 x rank + w x minutesOwed + fatiguePenalty - 3 (if target 0)`, where `minutesOwed = (target x gameFraction - played)/60` and `w` runs 0.35 (RM 1) to 1.0 (RM 20).
 - fatigue: `-0.4` per energy point below a tired line of 30 (RM 1) to 60 (RM 20), so a sharp coach rests players before they are badly tired.
 - finish (last 5 min x 0.75-1.25 by GM, margin <= 8 and |leadSafety| < 1.5, or overtime): normal utility plus 6 for closers with energy >= 25.
-- garbage (second half): the LEADER goes to his bench at a lead of 12+ points with |leadSafety| >= 2.0 (GM 1) to 1.2 (GM 20); the TRAILING coach concedes only at 1.17x that lead and safety (`GARBAGE_TRAILING_FACTOR`). Then `+1 x rank` plus fatigue, so the deepest players enter first; up to 5 swaps at once.
+- garbage (fourth quarter, or the third with 1.5x the lead and safety): the LEADER goes to his bench at a lead of 10+ points with |leadSafety| >= 2.0 (GM 1) to 1.2 (GM 20); the TRAILING coach concedes only at 1.65x that lead and safety (`GARBAGE_TRAILING_FACTOR`). Hysteresis: once at least four bench players (rotation rank 6+) are on the floor, the lead and safety only have to stay at 50% of those (`GARBAGE_EXIT_FACTOR` 0.5, it was 0.6 before the swap-back fix). Then `+1 x rank` plus fatigue, so the rotation bench enters in order; players the plan gives no minutes carry a -12 cost until |leadSafety| >= 4.5 (the game is decided). Up to 5 swaps at once.
 - A swap happens only if the entrant beats the occupant by an incumbent bonus of 2.5 (the anti-churn hysteresis; it gives roughly 3-6 minute stints). Normal pattern: at most 2 swaps per call. One rng draw per call decides whether the coach is watching (50% at RM 1, 100% at RM 20); a coach who isn't watching still makes forced swaps.
 - Fouls: threshold `round((period + 1) x limit/6)`, clamped to [2, limit-1], none in overtime (pro: 2/3/4/5; FIBA: 2/3/3/4). Cautious coaches (GM <= 6) sit top-5 players one foul earlier, gamblers (GM >= 15) one later. A sitter may return when the period has under 10% (GM 1) to 45% (GM 20) of its time left; no sitting in the finish. Stateless on purpose. Disqualified or sitting players are ineligible (utility -1000) and are always swapped out when someone eligible exists.
 - `chooseReplacement` picks the best entrant for a slot by the same utility (plan order, position fit, fatigue), never on-court, disqualified or sitting.
 
 ## 9. Integration and calibration notes (engine + tactics merged)
 
-- Final constants and measured results are in [match-engine.md](match-engine.md) ("Calibration with rotations"). Plan starter minutes are 40 / 37 / 34 (ride / balanced / share). Realised minutes come out 4-7 lower (rest, foul trouble, garbage time), landing at 30-33.
-- **Garbage time is nearly symmetric, the trailing coach slightly later.** The user's target is the real 2021-26 league: average margin of victory 12.4, 19.5% of games decided by 20+. A strongly asymmetric rule (trailing coach needs 1.5x) gave 10.6 / 12%; 1.2x gave 12.3 / 20%; the final 1.17x keeps all three seeds inside the targets. Both benches playing at once is what lets the margin run away, so the rule cannot be fully symmetric without overshooting the identical-teams spread.
+- Final constants and measured results are in [match-engine.md](match-engine.md) ("Calibration with rotations"). Plan starter minutes are 37 / 34 / 31 (ride / balanced / share). Realised minutes come out 3-6 lower (rest, foul trouble, garbage time), landing at 30-33.
+- **Garbage time (review fix M2).** The first version started at a 12-point lead anywhere in the second half and put the deepest players in first, so players the plan gave no minutes played ~15% of all minutes (11-12 player-minutes even in games decided by under 8). Now: mostly the fourth quarter, hysteresis, the rotation bench before the 0-minute players, and those wait until the game is decided. Zero-plan players now play 4.5-4.8% of minutes and ~1 player-minute per team-game in close games. The trailing coach concedes later (1.65x); that asymmetry is what keeps the league margin at the real 12.4 average with 19.5% decided by 20+ (symmetric: 13.4+ / 25%+).
+- **Rotation Management (review fix M1).** Narrower knobs (`PACE_WEIGHT_AT_RM_1/20` 0.3 / 0.55, `ATTENTION_AT_RM_1` 0.85, `TIRED_LINE_AT_RM_1/20` 38 / 55). Probe (tester, seed 1, after the swap-back fix): substitutions per game 33.6 / 41.5 / 46.9 at RM 1 / 10.5 / 20 (was 44 / 65 / 86 before the retune), plan gap 5.86 / 5.23 / 5.16 minutes, minutes on the floor under 40 energy 5.8 / 0.7 / 0.1 per team-game; at RM 10.5, GM 1 / 20 gives 45.6 / 37.8 subs and a 6.85 / 5.51 minute plan gap. A forced RM 1 coach at ~34 subs is below the 40-55 band and that is accepted by user decision: the band applies league-wide (about 41), and a poor rotation manager rides his starters. `OUT_OF_ROTATION_COST` is 10 (above the 8-point slot misfit, so an unused bench center does not replace the starting center).
 - Fatigue drain 0.07/s at Stamina 1 (half at 20), bench recovery 0.15/s, +8 at quarter breaks, +25 at halftime.
+- **Coach attribute strengths (measured, 3,000 games, same roster).** Rotation Management 20 vs. 1 is worth about **+5.65 points per game**; Offensive Coaching 20 vs. 1 about +2.44; Game Management 20 vs. 1 about +0.09 (tester re-measure, 3,000 paired games, ±0.4 SE). Game Management is near zero until the timeouts and end-of-game step gives it its real job. Rotation Management is the strongest single coach attribute because it decides who is on the floor and how tired he is across the whole game, which the ordinary coaching attributes do not touch. **Decision (user): keep it.** Revisit only if AI coach hiring ends up ignoring it or it dominates the market.
+- **The bridge** (`src/core/tactics/matchTeam.ts`): `matchTeamFor(team, { coach?, system?, rotationOverride?, rules? })` returns the team with `coaching` (`coachingInputs`), `rotation` (`buildRotationPlan(roster, coach, system, override, rules)`) and `rotationCoach` (`rotationCoachOf`) filled in. Use it everywhere a game is built from a club; before this fix nothing outside the tests turned a head coach into a game, so batch-sim only ever calibrated a neutral coach. `batch-sim --league-systems` now generates a real coach per team.
 - The CA rule: the head coach may read CA (reputation) when choosing minutes, so the "CA never affects the simulation" tests pin the rotation plan and then change only CA/Potential.
 - Performance: `bestFive` precomputes value and slot costs; position ratings and per-decision utilities are cached.
