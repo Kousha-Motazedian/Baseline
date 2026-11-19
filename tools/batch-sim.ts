@@ -590,7 +590,7 @@ function printRotationBuckets(t: Totals): void {
     const subs = (b.subs / b.teamGames).toFixed(1)
     const gap = (b.planGap / b.teamGames).toFixed(2)
     console.log(
-      `${(names[i] ?? '').padEnd(28)} ${String(b.teamGames).padStart(10)} ${subs.padStart(18)} ${gap.padStart(16)}`,
+      `${(names[i] ?? '').padEnd(28)} ${String(b.teamGames).padStart(10)} ${subs.padStart(18)} ${gap.padStart(16)} ${(b.exhausted / b.teamGames / 60).toFixed(1).padStart(19)}`,
     )
   })
 }

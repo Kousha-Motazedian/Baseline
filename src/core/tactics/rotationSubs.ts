@@ -20,6 +20,8 @@ import {
   FOUL_TABLE_LIMIT,
   FOUL_TROUBLE_MIN_FOULS,
   GARBAGE_LEAD_POINTS,
+  GARBAGE_BENCH_INCUMBENT_BONUS,
+  GARBAGE_DECIDED_EXIT_FACTOR,
   GARBAGE_DECIDED_SAFETY,
   GARBAGE_EARLY_FACTOR,
   GARBAGE_EXIT_FACTOR,
@@ -111,6 +113,20 @@ export function isGarbageTime(ctx: SubstitutionContext): boolean {
   return Math.abs(ctx.lead) >= leadNeeded && Math.abs(ctx.leadSafety) >= safetyNeeded
 }
 
+/**
+ * True when the game is over for garbage time's purposes: |lead safety| reaches
+ * GARBAGE_DECIDED_SAFETY. Hysteresis, like isGarbageTime: once a player the plan gives no minutes
+ * is on the floor, it only ends when the safety falls below GARBAGE_DECIDED_EXIT_FACTOR of that,
+ * so a lead hovering at the line does not swap whole lineups in and out every minute.
+ */
+function gameDecided(ctx: SubstitutionContext): boolean {
+  const idleOnFloor = ctx.onCourt.some((id) => (ctx.plan.targetSeconds[id] ?? 0) <= 0)
+  const needed = idleOnFloor
+    ? GARBAGE_DECIDED_SAFETY * GARBAGE_DECIDED_EXIT_FACTOR
+    : GARBAGE_DECIDED_SAFETY
+  return Math.abs(ctx.leadSafety) >= needed
+}
+
 /** The mode for this dead ball: the finish beats garbage time, which beats the normal pattern. */
 function modeOf(ctx: SubstitutionContext): Mode {
   if (isFinish(ctx)) return 'finish'
@@ -196,8 +212,7 @@ function computeUtility(ctx: SubstitutionContext, id: string, mode: Mode): numbe
   // say. Players the plan gives no minutes wait until the game is truly over.
   if (mode === 'garbage') {
     const idle = (ctx.plan.targetSeconds[id] ?? 0) <= 0
-    const decided = Math.abs(ctx.leadSafety) >= GARBAGE_DECIDED_SAFETY
-    return GARBAGE_RANK_WEIGHT * rank + tired - (idle && !decided ? GARBAGE_IDLE_COST : 0)
+    return GARBAGE_RANK_WEIGHT * rank + tired - (idle && !gameDecided(ctx) ? GARBAGE_IDLE_COST : 0)
   }
   const target = ctx.plan.targetSeconds[id] ?? 0
   // Minutes owed by now: planned share of the game so far minus what he has played. Its weight
@@ -281,7 +296,12 @@ function swapForSlot(
   const current = slotUtility(ctx, occupant, position, mode)
   // The incumbent bonus is the anti-churn hysteresis: a swap must beat it, and the player who
   // just came in gets it too, so nobody is swapped back and forth every possession.
-  const gain = entrant.value - (current + INCUMBENT_BONUS)
+  // In garbage time a bench player already on the floor is held there much harder: he is
+  // there on purpose, and tiredness alone must not bring the starters (or the end of the bench)
+  // back in and out every minute.
+  const benchHeld = mode === 'garbage' && ctx.plan.order.indexOf(occupant) >= STARTER_COUNT
+  const gain =
+    entrant.value - (current + (benchHeld ? GARBAGE_BENCH_INCUMBENT_BONUS : INCUMBENT_BONUS))
   const forced = current <= INELIGIBLE_UTILITY / 2
   return gain > 0 || forced ? { slot, incomingId: entrant.id, gain, forced } : undefined
 }
