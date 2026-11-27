@@ -324,7 +324,7 @@ changes fix that:
 ### 1. Equal edge weights
 
 `OFFENSE_EDGE_WEIGHT = DEFENSE_EDGE_WEIGHT = 0.75` originally (the rotations calibration lowered
-the offensive weight to 0.70, so the cancellation is now near-exact rather than exact; see
+the offensive weight to 0.72, so the cancellation is now near-exact rather than exact; see
 "Calibration with rotations"), applied through one function
 (`matchupEdge` in `contest.ts`) for shots, turnovers (ball security vs. ball pressure) and
 offensive rebounds (offensive vs. defensive rebounding). Shooting fouls use one weight for the
@@ -354,7 +354,7 @@ The `exp()` form matters: adding the same amount to every rating multiplies ever
 by the same factor, so a uniformly better league keeps the same shot mix.
 
 Selection is two-step: first the player, weighted by their total option weight raised to
-`USAGE_EXPONENT = 0.74` (0.6 before the rotations calibration), then the play type within that player. The compression stops one
+`USAGE_EXPONENT = 0.72` (0.6 before the rotations calibration), then the play type within that player. The compression stops one
 player who is a few points better than his teammates from taking 50+ shots a game (real defenses
 load up on stars; teammates need touches). It keeps the invariance property.
 

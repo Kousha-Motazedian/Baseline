@@ -96,10 +96,9 @@ describe('garbage time with real coaches', () => {
     expect(result.idleCloseMinutes).toBeLessThanOrEqual(2)
   })
 
-  // KNOWN DEFECT (tester report): the "decided" switch (|lead safety| >= 4.5) has no hysteresis, so
-  // a lead hovering near it swaps whole lineups of 0-minute players in and out every minute or two.
-  // Measured ~4 swap-backs per team-game in 15+ point games; this expects under 1. Remove
-  // `.fails` once the defect is fixed.
+  // Regression check for the tester's swap-back report: before the "decided" state got hysteresis
+  // (GARBAGE_DECIDED_EXIT_FACTOR) and the garbage-time bench incumbent bonus, a lead hovering near
+  // the line swapped whole lineups in and out (~4 swap-backs per team-game in 15+ point games).
   it('does not swap a bench player back out within a minute in garbage time', () => {
     expect(result.reversalsPerGarbageGame).toBeLessThan(1)
   })
