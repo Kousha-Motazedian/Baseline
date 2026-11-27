@@ -62,6 +62,7 @@ Game design decisions live in `docs/design/`. Read the relevant doc before imple
 - `docs/design/player-roles.md` — position ratings, roles, Current Ability formula and tier calibration, position-based generation
 - `docs/design/coaches.md` — head coach attributes, playing styles and systems, role fit, override penalty, hiring/firing and the coach cap
 - `docs/design/rotations.md` — fatigue, the coach's rotation plan and substitutions, GM rotation takeover, player-level box-score targets
+- `docs/design/timeouts.md` — timeout rules and effects, when the coach calls them, end-of-game decisions by Game Management
 
 ## Code style (applies to the entire codebase, not just the engine)
 
