@@ -60,7 +60,7 @@ export const HEAVY_USAGE_SHOTS = 19
 export const HEAVY_USAGE_SCALE = 8
 /**
  * How much shot volume concentrates on the lineup's most attractive player. 1 = proportional to
- * their total play weight; 0.74 (up from 0.6 once heavy-usage damping trimmed the 50-point tail)
+ * their total play weight; 0.72 (up from 0.6 once heavy-usage damping trimmed the 50-point tail)
  * is what the rotations calibration settled on (see choosePlay and match-engine.md).
  */
 export const USAGE_EXPONENT = 0.72
@@ -332,10 +332,10 @@ export const FREE_THROW_MAX_CHANCE = 0.97
 
 /**
  * How much the offensive player's skill moves the outcome (log-odds per normalized rating).
- * 0.70 means an elite scorer (rating 18) vs. an average defender gains ~0.55 log-odds. Slightly
+ * 0.72 means an elite scorer (rating 18) vs. an average defender gains ~0.57 log-odds. Slightly
  * below DEFENSE_EDGE_WEIGHT on purpose (it was 0.75): with rotations the offense:defense gain
- * ratio sat on the 1.50 ceiling (1.50-1.61 across seeds), and 0.70 centres it at ~1.40 for a
- * +0.4 pts/100 league shift (limit +-2).
+ * ratio sat on the 1.50 ceiling (1.50-1.61 across seeds); 0.70 overshot to 1.28-1.33 once garbage
+ * time changed, and 0.72 centres it at about 1.4 (see match-engine.md).
  */
 export const OFFENSE_EDGE_WEIGHT = 0.72
 /**

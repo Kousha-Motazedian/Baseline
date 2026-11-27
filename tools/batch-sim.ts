@@ -619,7 +619,8 @@ function calibrationTeam(rng: Rng, id: string): MatchTeam {
 
 /**
  * Every league team has a generated head coach (real attributes) running his own preferred
- * system, with his rotation plan and substitution attributes (`--league-systems`). Set once in main(). Off by default, so the targets check today's engine.
+ * system, with his rotation plan and substitution attributes (`--league-systems`). Set once in
+ * main(). Off by default, so the targets check today's engine.
  */
 let useLeagueSystems = false
 
