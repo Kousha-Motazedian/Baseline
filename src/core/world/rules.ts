@@ -21,6 +21,34 @@ export type NoBenchDisqualificationRule = 'staysOn' | 'playShorthanded'
  */
 export type PeriodStartRule = 'quarterRotation' | 'alternatingArrow'
 
+/**
+ * Timeout allowances (docs/design/timeouts.md, section 1). Data, so each league sets its own.
+ *
+ * Regulation timeouts come in pools: `scope: 'game'` is one pool for the whole game (pro, 7);
+ * `scope: 'half'` gives each half its own pool and leftovers from the first half are lost
+ * (FIBA, 2 + 3). Late limits cap how many may be used in the final period or in its last
+ * seconds, whatever the pool still holds.
+ */
+export interface TimeoutRules {
+  scope: 'game' | 'half'
+  /** Pool sizes: one entry for `game` scope, [first half, second half] for `half` scope. */
+  allowances: number[]
+  /** Most timeouts a team may use in the final regulation period. Null = no such limit. */
+  finalPeriodMax: number | null
+  /** The last `lateWindowSeconds` of the final period allow at most `lateMax` (null = no limit). */
+  lateWindowSeconds: number
+  lateMax: number | null
+  /** Timeouts each team gets in every overtime period. */
+  overtimeAllowance: number
+  /** True if unused regulation timeouts carry into overtime (pro: yes; FIBA: no). */
+  overtimeCarryOver: boolean
+  /**
+   * Window (seconds left) in the final period and overtime in which a timeout lets the offense
+   * inbound the ball in the frontcourt. Null = never.
+   */
+  advanceBallWindowSeconds: number | null
+}
+
 /** The game rules a league plays under. */
 export interface LeagueRules {
   name: string
@@ -77,6 +105,8 @@ export interface LeagueRules {
   noBenchDisqualification: NoBenchDisqualificationRule
   /** Who starts each period with the ball after the opening tip. */
   periodStartRule: PeriodStartRule
+  /** Timeout allowances and the late-game limits on them. */
+  timeouts: TimeoutRules
   /** Players on each team's roster (the generator builds rosters of this size). */
   rosterSize: number
   /**
@@ -115,6 +145,18 @@ export const PRO_RULES: LeagueRules = {
   offensiveFoulsCountAsTeamFouls: false,
   noBenchDisqualification: 'staysOn',
   periodStartRule: 'quarterRotation',
+  // Pro: 7 a game, at most 4 in the 4th and at most 2 in its last 3:00; 2 per overtime, and
+  // unused regulation timeouts carry into overtime (they are not lost).
+  timeouts: {
+    scope: 'game',
+    allowances: [7],
+    finalPeriodMax: 4,
+    lateWindowSeconds: 180,
+    lateMax: 2,
+    overtimeAllowance: 2,
+    overtimeCarryOver: true,
+    advanceBallWindowSeconds: 120,
+  },
   // 15 standard contracts per team: 30 teams give the design docs' ~450-player league.
   rosterSize: 15,
   // In US dollars (no player salary data exists yet to scale against). Real NBA head coaches earn
@@ -153,6 +195,18 @@ export const FIBA_RULES: LeagueRules = {
   // FIBA Art. 12.5: every period after the first, overtimes included, starts with an
   // alternating-possession throw-in; the arrow first points to the team that lost the opening tip.
   periodStartRule: 'alternatingArrow',
+  // FIBA: 2 in the first half, 3 in the second (first-half leftovers are lost), at most 2 in the
+  // last 2:00 of the 4th; 1 per overtime, and regulation leftovers don't carry over.
+  timeouts: {
+    scope: 'half',
+    allowances: [2, 3],
+    finalPeriodMax: null,
+    lateWindowSeconds: 120,
+    lateMax: 2,
+    overtimeAllowance: 1,
+    overtimeCarryOver: false,
+    advanceBallWindowSeconds: 120,
+  },
   // FIBA game rosters list 12 players.
   rosterSize: 12,
   // In euros. Top European club head coaches earn on the order of EUR 1–2M a season and most far

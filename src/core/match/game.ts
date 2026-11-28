@@ -7,6 +7,7 @@ import type { GameState, TeamState } from './state.ts'
 import { createTeamState, log, opponentOf } from './state.ts'
 import { applyBothSubstitutions } from './substitutions.ts'
 import { resetTeamFouls } from './teamFouls.ts'
+import { runTimeoutWindow } from './timeouts.ts'
 import type { MatchResult, MatchTeam, TeamResult } from './types.ts'
 
 /** Everything needed to simulate one game. */
@@ -17,6 +18,12 @@ export interface SimulateGameOptions {
   /** Same seed + same teams + same rules = the exact same game, every time. */
   seed: number
 }
+
+/** Possessions in a row that may use no clock before the engine declares the period stuck. */
+const MAX_STALLED_POSSESSIONS = 20
+
+/** A period never has anywhere near this many possessions (a 12-minute quarter has ~25). */
+const MAX_PERIOD_POSSESSIONS = 500
 
 /** A jump ball: either team wins it with equal chance. */
 function jumpBall(game: GameState): TeamState {
@@ -55,13 +62,33 @@ function playPeriod(game: GameState, lengthSeconds: number, starter: TeamState):
   applyBreakRecovery(game)
   let offense = starter
   let start: PossessionStart = HALF_COURT_START
+  let afterScore = false
+  let stalled = 0
+  let possessions = 0
   while (game.clock > 0) {
-    // Every possession starts at a dead ball: the coaches may substitute.
-    applyBothSubstitutions(game)
+    const clockAtStart = game.clock
     const defense = offense === game.home ? game.away : game.home
+    // Every possession starts at a dead ball: the coaches may call a timeout, then substitute.
+    const timeout = runTimeoutWindow(game, offense, defense, afterScore)
+    applyBothSubstitutions(game)
+    // A timeout kills the transition chance: the defense gets set.
+    if (timeout) start = { ...start, fastBreak: undefined }
     const end = simulatePossession(game, offense, defense, start)
+    // The drawn-up play and saved clock only ever last one possession.
+    game.home.afterTimeout = undefined
+    game.away.afterTimeout = undefined
     start = { fastBreak: end.fastBreak, afterTurnover: end.turnover }
+    afterScore = end.scored
     offense = defense
+    // Defensive guard: every possession must use clock, or the period would never end.
+    possessions += 1
+    if (possessions > MAX_PERIOD_POSSESSIONS) {
+      throw new Error(`Period ${game.period} ran over ${MAX_PERIOD_POSSESSIONS} possessions`)
+    }
+    stalled = game.clock < clockAtStart ? 0 : stalled + 1
+    if (stalled > MAX_STALLED_POSSESSIONS) {
+      throw new Error(`Period ${game.period} stalled with ${game.clock} s left (no clock used)`)
+    }
   }
   // Not a team action; by convention it's attributed to the team that started the period.
   log(game, starter, `End of ${periodName(game)}`)
@@ -87,6 +114,8 @@ function toTeamResult(team: TeamState): TeamResult {
     pointsOffTurnovers: team.pointsOffTurnovers,
     teamRebounds: team.teamRebounds,
     exhaustedSeconds: team.exhaustedSeconds,
+    timeouts: team.timeoutLog.length,
+    twoForOnes: team.twoForOnes,
     players: team.team.roster.map((p) => team.lines.get(p.id)).filter((l) => l !== undefined),
   }
 }
@@ -102,6 +131,7 @@ export function simulateGame(options: SimulateGameOptions): MatchResult {
     period: 1,
     clock: 0,
     playByPlay: [],
+    run: { team: undefined, points: 0 },
   }
 
   const tipWinner = jumpBall(game)

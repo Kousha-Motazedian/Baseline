@@ -1,6 +1,7 @@
 import type { Player } from '../players/types.ts'
 import type { Rng } from '../shared/rng.ts'
 import type { LeagueRules } from '../world/rules.ts'
+import { lastShotTimingError, twoForOneChance } from './endGame.ts'
 import { findContesters, pickContester } from './contest.ts'
 import type { FastBreak } from './fastBreak.ts'
 import { startFastBreak, transitionHelpFactor } from './fastBreak.ts'
@@ -31,7 +32,8 @@ import {
 } from './scoreEffects.ts'
 import { resolveShot } from './shot.ts'
 import type { GameState, TeamState } from './state.ts'
-import { log, matchupDefender, runClock } from './state.ts'
+import { isLateInGame, leadOf, log, matchupDefender, runClock } from './state.ts'
+import { takeSavedSeconds } from './timeouts.ts'
 import {
   ACTION_TIMING,
   BASE_CHARGE,
@@ -41,6 +43,9 @@ import {
   BUZZER_SHOT_PENALTY,
   ON_BALL_FOUL_SHARE,
   TRANSITION_PLAY_SHARE,
+  TWO_FOR_ONE_LEAVE_SECONDS,
+  TWO_FOR_ONE_MAX_SECONDS,
+  TWO_FOR_ONE_MIN_SECONDS,
   USAGE_EXPONENT,
 } from './tuning.ts'
 import { offensiveFoulTurnover, tryHandlerTurnover, tryShooterTurnover } from './turnover.ts'
@@ -58,7 +63,8 @@ import { offensiveFoulTurnover, tryHandlerTurnover, tryShooterTurnover } from '.
  */
 
 /** The action about to be run. */
-type Action = { kind: 'halfCourt' } | { kind: 'transition'; starter: Player } | NextAction
+type Action =
+  { kind: 'halfCourt'; quick?: boolean } | { kind: 'transition'; starter: Player } | NextAction
 
 /** How a possession starts: after a turnover, and/or as a fast break led by a given player. */
 export interface PossessionStart {
@@ -70,7 +76,12 @@ export interface PossessionStart {
 export interface PossessionEnd {
   fastBreak: Player | undefined
   turnover: boolean
+  /** True if the last action scored (a made shot or free throws): the next dead ball follows a score. */
+  scored: boolean
 }
+
+/** Actions in a row that may use no clock before a possession is declared stuck. */
+const MAX_STALLED_ACTIONS = 50
 
 /** A normal possession: half-court, not after a turnover. */
 export const HALF_COURT_START: PossessionStart = { fastBreak: undefined, afterTurnover: false }
@@ -116,11 +127,21 @@ function setTiming(
   offense: TeamState,
   kind: ActionKind,
   shotClock: number,
+  quickShot = false,
 ): SetTiming {
-  const rolled = pacedSeconds(offense, kind, actionSeconds(game.rng, kind, shotClock), shotClock)
+  const natural = pacedSeconds(offense, kind, actionSeconds(game.rng, kind, shotClock), shotClock)
+  // A timeout in the last 2:00 saves the clock spent bringing the ball up (first set only).
+  const min = ACTION_TIMING[kind].min
+  const saved = Math.max(min, natural - takeSavedSeconds(offense))
+  // A 2-for-1 shot goes up early enough that the clock still allows another possession after it.
+  const rolled = quickShot
+    ? Math.max(min, Math.min(saved, game.clock - TWO_FOR_ONE_LEAVE_SECONDS))
+    : saved
   if (kind === 'transition') return { seconds: rolled, rush: rushPenalty(game.clock, rolled) }
   const adjusted = Math.min(scoreAdjustedSeconds(game, offense, rolled, shotClock), shotClock)
-  const timed = endOfPeriodSeconds(game, offense, adjusted, shotClock, ACTION_TIMING[kind].min)
+  // The coach's feel for the clock: a poor one shoots the last shot too early or too late.
+  const error = game.clock <= shotClock ? lastShotTimingError(game.rng, offense.coach) : 0
+  const timed = endOfPeriodSeconds(game, offense, adjusted, shotClock, min, error)
   const seconds = timed ?? adjusted
   // A milked possession's late-clock shot is worse, like a shot rushed by the buzzer.
   return { seconds, rush: rushPenalty(game.clock, seconds) + milkShotPenalty(game, offense) }
@@ -275,7 +296,8 @@ function runSet(
   const handler =
     starter && offense.onCourt.includes(starter) ? starter : pickHandler(game.rng, offense.onCourt)
   const play = choosePlay(game.rng, offense, defense, playOptions(game, offense, fastBreak))
-  const { seconds, rush } = setTiming(game, offense, action.kind, shotClock)
+  const quick = action.kind === 'halfCourt' && action.quick === true
+  const { seconds, rush } = setTiming(game, offense, action.kind, shotClock, quick)
   runClock(game, seconds)
   return playOutSet({ game, offense, defense, handler, play, fastBreak, rush })
 }
@@ -385,11 +407,23 @@ function nextShotClock(rules: LeagueRules, next: NextAction, remaining: number):
 }
 
 /** The first action of a possession: a fast break if one was started (and the starter is still on). */
-function firstAction(offense: TeamState, start: PossessionStart): Action {
+function firstAction(game: GameState, offense: TeamState, start: PossessionStart): Action {
   const starter = start.fastBreak
-  return starter && offense.onCourt.includes(starter)
-    ? { kind: 'transition', starter }
-    : { kind: 'halfCourt' }
+  if (starter && offense.onCourt.includes(starter)) return { kind: 'transition', starter }
+  return { kind: 'halfCourt', quick: goesForTwoForOne(game, offense) }
+}
+
+/**
+ * True if the offense takes a quick shot to get the period's last possession too (a 2-for-1): the
+ * clock is in the 2-for-1 window, a team protecting a late lead never does, and the coach has to
+ * see it (Game Management). Counted for the batch report when it does.
+ */
+function goesForTwoForOne(game: GameState, offense: TeamState): boolean {
+  if (game.clock > TWO_FOR_ONE_MAX_SECONDS || game.clock < TWO_FOR_ONE_MIN_SECONDS) return false
+  if (isLateInGame(game, TWO_FOR_ONE_MAX_SECONDS) && leadOf(game, offense) > 0) return false
+  if (!game.rng.chance(twoForOneChance(offense.coach))) return false
+  offense.twoForOnes += 1
+  return true
 }
 
 /** Simulates one full possession, including any second chances, and says how it ended. */
@@ -401,10 +435,11 @@ export function simulatePossession(
 ): PossessionEnd {
   offense.possessions += 1
   const pointsAtStart = offense.points
-  let action = firstAction(offense, start)
+  let action = firstAction(game, offense, start)
   let shotClock = game.rules.shotClockSeconds
-  let end: PossessionEnd = { fastBreak: undefined, turnover: false }
+  let end: PossessionEnd = { fastBreak: undefined, turnover: false, scored: false }
   // The possession ends on a score, turnover, defensive rebound, or when the period clock runs out.
+  let stalledActions = 0
   while (game.clock > 0) {
     const clockBefore = game.clock
     const pointsBefore = offense.points
@@ -412,8 +447,17 @@ export function simulatePossession(
     // Fast-break points: everything the transition action itself produced, free throws included.
     if (action.kind === 'transition') offense.fastBreakPoints += offense.points - pointsBefore
     if (outcome.over) {
-      end = { fastBreak: outcome.fastBreak, turnover: outcome.turnover }
+      end = {
+        fastBreak: outcome.fastBreak,
+        turnover: outcome.turnover,
+        scored: offense.points > pointsBefore,
+      }
       break
+    }
+    // Defensive guard: actions that use no clock would loop forever.
+    stalledActions = game.clock < clockBefore ? 0 : stalledActions + 1
+    if (stalledActions > MAX_STALLED_ACTIONS) {
+      throw new Error(`Possession stalled: ${action.kind} used no clock (${game.clock} s left)`)
     }
     shotClock = nextShotClock(game.rules, outcome.next, shotClock - (clockBefore - game.clock))
     action = outcome.next

@@ -10,6 +10,9 @@ import type { RotationCoach, RotationPlan } from '../tactics/rotation.ts'
 import { buildRotationPlan, NEUTRAL_ROTATION_COACH } from '../tactics/rotation.ts'
 import type { TeamTactics } from './coaching.ts'
 import { teamTactics } from './coaching.ts'
+import type { EndGameLapses } from './endGame.ts'
+import { rollEndGameLapses } from './endGame.ts'
+import type { AfterTimeout, TimeoutUse } from './timeouts.ts'
 import { energyOf, FULL_ENERGY, systemDrainFactor, tickEnergy } from './fatigue.ts'
 import {
   EXHAUSTED_ENERGY,
@@ -76,6 +79,14 @@ export interface TeamState {
   teamRebounds: number
   /** Player-seconds on the floor below EXHAUSTED_ENERGY (diagnostic). */
   exhaustedSeconds: number
+  /** Timeouts taken so far (when each was called); the rules decide how many are left. */
+  timeoutLog: TimeoutUse[]
+  /** What the last timeout leaves for the next possession (cleared after it). */
+  afterTimeout: AfterTimeout | undefined
+  /** 2-for-1 shots the team went for (diagnostic, shown in the batch report). */
+  twoForOnes: number
+  /** The coach's end-game calls for this game (fouling up 3, forgetting the chase foul). */
+  lapses: EndGameLapses
 }
 
 /** The whole game's live state. */
@@ -88,6 +99,8 @@ export interface GameState {
   /** Seconds left in the current period. */
   clock: number
   playByPlay: PlayByPlayEntry[]
+  /** The current unanswered scoring run (feeds the coach's timeout decision). */
+  run: { team: TeamState | undefined; points: number }
 }
 
 /** Creates an empty box score line for a player. */
@@ -176,6 +189,7 @@ export function createTeamState(
 ): TeamState {
   if (team.roster.length < 5) throw new RangeError(`${team.name} needs at least 5 players`)
   const system = team.coaching?.system ?? BALANCED_SYSTEM
+  const coach = team.rotationCoach ?? NEUTRAL_ROTATION_COACH
   const plan = team.rotation ?? buildRotationPlan(team.roster, undefined, system, undefined, rules)
   return {
     team,
@@ -183,7 +197,7 @@ export function createTeamState(
     tactics: teamTactics(team),
     onCourt: startersOf(team, plan),
     plan,
-    coach: team.rotationCoach ?? NEUTRAL_ROTATION_COACH,
+    coach,
     energy: new Map(team.roster.map((p) => [p.id, FULL_ENERGY])),
     drainFactor: systemDrainFactor(system),
     lines: new Map(team.roster.map((p) => [p.id, startedLine(p, plan)])),
@@ -199,6 +213,10 @@ export function createTeamState(
     pointsOffTurnovers: 0,
     teamRebounds: 0,
     exhaustedSeconds: 0,
+    timeoutLog: [],
+    afterTimeout: undefined,
+    twoForOnes: 0,
+    lapses: rollEndGameLapses(rng, coach),
   }
 }
 
@@ -213,6 +231,7 @@ export function lineOf(team: TeamState, player: Player): PlayerLine {
 export function addPoints(game: GameState, team: TeamState, player: Player, points: number): void {
   lineOf(team, player).points += points
   team.points += points
+  game.run = game.run.team === team ? { team, points: game.run.points + points } : { team, points }
   const periodIndex = game.period - 1
   team.periodPoints[periodIndex] = (team.periodPoints[periodIndex] ?? 0) + points
 }

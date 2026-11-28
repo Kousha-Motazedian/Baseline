@@ -421,14 +421,32 @@ export const BUZZER_SHOT_PENALTY = 1.5
 // Late-game score effects (last regulation period and overtime)
 // ---------------------------------------------------------------------------------------------
 
-/** A leading team starts running clock in the final this-many seconds... */
-export const MILK_WINDOW_SECONDS = 150
+/**
+ * A leading team starts running clock in the final this-many seconds... (2:50, up from 2:30: the
+ * timeouts step needed more late-game mean reversion to reach the 5-7% overtime target. Longer
+ * windows add overtimes but cost average margin of victory: 170 s balances the two.)
+ */
+export const MILK_WINDOW_SECONDS = 170
 /** ...fully once it leads by this many points (partially for smaller leads)... */
-export const MILK_FULL_LEAD = 6
+export const MILK_FULL_LEAD = 4
 /** ...using up to this share of the gap between a normal action and a near-violation one. */
-export const MILK_MAX_SHARE = 0.8
-/** Log-odds penalty on a fully milked possession's shot (scaled by the milk share). */
-export const MILK_SHOT_PENALTY = 0.5
+export const MILK_MAX_SHARE = 0.9
+/**
+ * Log-odds penalty on a fully milked possession's shot (scaled by the milk share). 1.5 is more
+ * than the ~0.5 a single late-clock shot costs on its own: it stands in for everything else a
+ * protected lead costs (tighter defense on the one set, no transition, no offensive rebounds)
+ * and is what keeps close leads from being safe, which real overtime rates need.
+ */
+export const MILK_SHOT_PENALTY = 1.5
+/**
+ * The late-clock penalty fades out for big leads: it is full up to this lead and gone
+ * MILK_FADE_WIDTH points later. A team protecting a close lead really does take worse looks; a
+ * team up 15 with three minutes left is in garbage time and its shots are not contested that way.
+ * Without the fade the penalty also shrank blowouts, which pulled the average margin of victory
+ * below its target.
+ */
+export const MILK_FADE_START = 5
+export const MILK_FADE_WIDTH = 6
 /** Seconds left on the shot clock when a team milking the clock finally shoots. */
 export const MILK_BUFFER_SECONDS = 3
 /** A tied team holding for the last shot shoots with this many seconds left on the game clock. */
@@ -443,8 +461,12 @@ export const TRAILING_SHOT_BUFFER_SECONDS = 5
 export const HURRY_MIN_DEFICIT = 3
 /** ...in the final this-many seconds plays faster... */
 export const HURRY_WINDOW_SECONDS = 90
+/**
+ * ...unless it is down by more than this (the game is gone: no hurried offense, the bench plays)...
+ */
+export const HURRY_MAX_DEFICIT = 12
 /** ...taking this fraction of a normal action's time. */
-export const HURRY_FACTOR = 0.55
+export const HURRY_FACTOR = 0.3
 /** A team down 4+ fouls on purpose (for extra possessions) only in the final this-many s... */
 export const INTENTIONAL_FOUL_SECONDS = 30
 /** ...when down by at least this many (down 1–3 it chase-fouls: CHASE_FOUL_MAX_DEFICIT)... */
@@ -575,3 +597,59 @@ export const FATIGUE_EFFORT_SHARE = 0.6
  * it by half (factor 1.5), an average player is unchanged.
  */
 export const HUSTLE_EFFORT_SOFTENING = 0.5
+
+// ---------------------------------------------------------------------------------------------
+// Timeouts (docs/design/timeouts.md, sections 2 and 5)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Energy every player (floor and bench) regains in a timeout: a ~75 s stoppage. The bench regains
+ * 0.15/s and a player on the floor loses 0.07/s, so a full minute-plus of rest is worth ~10; we
+ * count only a short pause (the floor gets no extra rest while the bench is already resting)
+ * and keep it well under the 8-point quarter break so timeouts help but don't replace substitutes.
+ */
+export const TIMEOUT_RECOVERY = 1
+/** Game clock (s) a timeout saves the inbounder when the ball is advanced: uniform in [MIN, MAX]. */
+export const ADVANCE_BALL_SECONDS_MIN = 4
+export const ADVANCE_BALL_SECONDS_MAX = 6
+/** Game clock (s) saved when the team with the ball stops the clock after an opponent score. */
+export const STOP_CLOCK_SAVED_SECONDS = 2
+/**
+ * Largest log-odds execution edge on the possession after a timeout (a drawn-up play), reached by
+ * a Game Management 20 coach; it scales linearly with Game Management. Small on purpose: it
+ * touches one possession per timeout.
+ */
+export const AFTER_TIMEOUT_MAX_EDGE = 0.1
+
+// ---------------------------------------------------------------------------------------------
+// 2-for-1 and end-game decisions by Game Management (docs/design/timeouts.md, section 4)
+// ---------------------------------------------------------------------------------------------
+
+/** A team with the ball and this much clock (s) or less, down to the MIN, may go for a 2-for-1. */
+export const TWO_FOR_ONE_MAX_SECONDS = 42
+export const TWO_FOR_ONE_MIN_SECONDS = 26
+/**
+ * A 2-for-1 shot goes up with about this many seconds left, so even if the opponent uses a whole
+ * shot clock the team gets the ball back for the last possession.
+ */
+export const TWO_FOR_ONE_LEAVE_SECONDS = 30
+/** Chance a Game Management 1 / 20 coach takes the 2-for-1 when it is there (linear between). */
+export const TWO_FOR_ONE_CHANCE_MIN = 0.3
+export const TWO_FOR_ONE_CHANCE_MAX = 1
+/** Chance a Game Management 1 / 20 coach fouls when up 3 in the final seconds (linear between). */
+export const FOUL_UP_THREE_CHANCE_MIN = 0.1
+export const FOUL_UP_THREE_CHANCE_MAX = 1
+/** Chance a Game Management 1 coach forgets to chase-foul down 1-3 (0 at neutral and above). */
+export const CHASE_FOUL_MISS_MAX = 0.25
+/**
+ * Spread of the foul-when-trailing window: a Game Management 1 coach starts fouling for extra
+ * possessions 1 - SPREAD times late (and keeps fouling longer), a 20 coach 1 + SPREAD times earlier.
+ */
+export const FOUL_WINDOW_SPREAD = 0.4
+/** A poor coach keeps fouling at deficits up to this much larger than a good one's cap. */
+export const FOUL_DEFICIT_SPREAD = 0.5
+/**
+ * SD (s) of the error in when the last shot goes up, for a Game Management 1 coach (shrinks
+ * linearly to 0 at a 20): holding too long (heave at the buzzer) or shooting too early.
+ */
+export const LAST_SHOT_TIMING_SD = 2.5

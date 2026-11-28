@@ -57,6 +57,12 @@ export function makeGameState(options: TestGameOptions): GameState {
     period: options.period ?? 1,
     clock: options.clock ?? 720,
     playByPlay: [],
+    run: { team: undefined, points: 0 },
+  }
+  // Unit tests of the exact late-game rules want the coach to make the textbook calls; the
+  // Game Management lapses (fouling up 3, the chase foul) are tested on their own.
+  for (const team of [game.home, game.away]) {
+    team.lapses = { foulsUpThree: true, missesChaseFoul: false }
   }
   if (options.form !== undefined) {
     for (const team of [game.home, game.away]) {

@@ -73,3 +73,59 @@ The engine's existing late-game rules become the coach's decisions, done well or
 - Challenges / coach's challenge, video review.
 - Intentional missed free throws.
 - Bench and coach technical fouls.
+
+## 8. Implementation notes (engine side)
+
+**Rules data** (`LeagueRules.timeouts: TimeoutRules`, `world/rules.ts`): `scope` (`game` = one pool,
+`half` = a pool per half, leftovers lost), `allowances` (`[7]` pro, `[2, 3]` FIBA), `finalPeriodMax`
+(pro 4, FIBA none), `lateWindowSeconds` + `lateMax` (pro last 3:00 / 2, FIBA last 2:00 / 2),
+`overtimeAllowance` (2 / 1), `overtimeCarryOver` (pro yes, FIBA no) and `advanceBallWindowSeconds`
+(120 in both). `match/timeouts.ts` turns a team's timeout log (`TeamState.timeoutLog`, one entry per
+call: period and clock) into `{ usable, total }`: `usable` obeys every limit right now, `total` is what
+is left for the rest of regulation or the current overtime (this is the contract's `timeoutsLeftTotal`).
+
+**When the coach is asked.** At every possession start (a dead ball): the team with the ball always,
+the other team only after a score (a live ball after a rebound or turnover gives only the ball's
+team the right). At most one timeout per dead ball, so the ball is never advanced twice. The call is
+`decideTimeout` in `tactics/timeouts.ts`. A timeout also removes any fast break the possession was
+about to start (the defense is set).
+
+**What a timeout does** (constants in `tuning.ts`):
+
+- Everyone (both teams, floor and bench) regains `TIMEOUT_RECOVERY` = 1 energy. Kept small: more
+  pushed substitutions per game under the 40-55 target (3 cost about 1.5 subs a game).
+- Clock saved for the team with the ball, once, on its next set: in the last 2:00 of the final period
+  and overtime the ball is advanced, so 4-6 s (`ADVANCE_BALL_SECONDS_MIN/MAX`), whoever calls it.
+  Otherwise a caller with the ball that stops the clock (`stopClock`, `lastPossession`) saves
+  `STOP_CLOCK_SAVED_SECONDS` = 2 s of inbounding. The set can't go below its action kind's minimum.
+- The calling team's next possession (either end of the floor) gets a drawn-up-play edge of
+  `AFTER_TIMEOUT_MAX_EDGE` (0.1 log-odds) x Game Management / 20.
+- The play-by-play logs `Timeout <team> (<reason>)`; `TeamResult.timeouts` counts them.
+
+**2-for-1.** At a possession start with 26-42 s left (`TWO_FOR_ONE_MIN/MAX_SECONDS`) in any period, a
+team that is not protecting a late lead takes a quick shot with `twoForOneChance(coach)` (0.3 at Game
+Management 1, 1.0 at 20, linear). The first set is shortened to end with about 30 s left
+(`TWO_FOR_ONE_LEAVE_SECONDS`), so the opponent can't use a full shot clock and still deny the last
+possession. Counted in `TeamResult.twoForOnes`.
+
+**End-game decisions by Game Management** (`match/endGame.ts`, `scoreEffects.ts`). Skill is
+Game Management on the 1-20 scale; a neutral coach (10.5) reproduces the plain late-game rules.
+
+| Decision                    | Poor (GM 1)                                    | Neutral (10.5) | Good (20)   |
+| --------------------------- | ---------------------------------------------- | -------------- | ----------- |
+| Start fouling when down 4+  | at 18 s (window x0.6) instead of 30 s          | 30 s           | 42 s (x1.4) |
+| Deficit still worth fouling | cap x1.5 (keeps fouling when the game is gone) | `3 + clock/6`  | cap x0.85   |
+| Chase foul down 1-3         | forgets it 25% of games (rolled at tip-off)    | always         | always      |
+| Foul up 3 in the last 6 s   | 10% of games (rolled at tip-off)               | 55%            | 100%        |
+| Last-shot timing            | timing error SD 2.5 s (heave or too early)     | exact          | exact       |
+| Down 3 / down 2 tying shot  | no three / two preference                      | full           | full        |
+| 2-for-1                     | 30% of the chances                             | 65%            | 100%        |
+
+The once-per-game rolls (`TeamState.lapses`) make a coach consistent through a situation; the
+rest are deterministic in Game Management, so `intentionalFoulPlan` and friends stay pure.
+
+**Calibration lever that was NOT timeouts.** Measured with timeouts off, with every late dead ball a
+timeout, and with the stub, the overtime rate did not move beyond noise (about 3.8-4.0% either
+way), and neither did fouling up 3 (0 to 100% of games) nor the keyed-defense edge. What moved it was
+late-game mean reversion: a longer, stronger lead-protection penalty (see match-engine.md,
+"Late-game score effects"). The fade for big leads keeps blowouts (average margin of victory) intact.

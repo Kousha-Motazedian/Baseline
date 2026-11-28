@@ -424,7 +424,8 @@ describe('away-from-the-play rule and the shrinking foul cap (tester fix pass)',
   })
 
   it('FIBA: still hunts the worst free-throw shooter on the floor', () => {
-    expect(brickShare(FIBA_RULES)).toBe(1)
+    // Almost every free throw is his; a rare other one comes from a putback fouled after a miss.
+    expect(brickShare(FIBA_RULES)).toBeGreaterThan(0.95)
   })
 
   it('the deficit cap is 3 + clock / 6: 8 at 0:30, 4 at 0:06', () => {

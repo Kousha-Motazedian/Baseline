@@ -113,6 +113,10 @@ export interface TeamResult {
    * rests players (rotation calibration), not a box score stat.
    */
   exhaustedSeconds: number
+  /** Timeouts the team took. */
+  timeouts: number
+  /** Times the team went for a 2-for-1 (a quick shot to get the period's last possession too). */
+  twoForOnes: number
   players: PlayerLine[]
 }
 

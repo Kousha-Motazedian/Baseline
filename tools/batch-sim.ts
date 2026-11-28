@@ -8,6 +8,8 @@
  *   npm run sim:batch -- --average         uniform average teams (no stars) instead of league teams
  *   npm run sim:batch -- --league-systems  every league team has a generated head coach (real attributes)
  *   npm run sim:batch -- --rotation-probe  substitutions and plan gap with every coach at RM 1 / 10.5 / 20 (and GM 1 / 20)
+ *   npm run sim:batch -- --identical-only  only the identical-teams games (quick overtime-rate check)
+ *   npm run sim:batch -- --gm-probe        (alone) close-game win rate of Game Management 20 / 10.5 / 1 coaches, talent equal
  *   npm run sim:batch -- --systems         report-only system/fit/coaching experiments
  *   npm run sim:batch -- --fit-stats       raw fit mean/SD per system option (fit centering data)
  *
@@ -78,6 +80,9 @@ interface Totals {
   under70: number
   fastBreakPoints: number
   pointsOffTurnovers: number
+  /** Timeouts taken and 2-for-1 shots attempted, summed over team-games. */
+  timeouts: number
+  twoForOnes: number
   /** Sum over team-games of the team's top scorer's points. */
   topScorerPoints: number
   /** Sum over team-games of the starters' average minutes. */
@@ -179,6 +184,8 @@ function emptyTotals(): Totals {
     under70: 0,
     fastBreakPoints: 0,
     pointsOffTurnovers: 0,
+    timeouts: 0,
+    twoForOnes: 0,
     topScorerPoints: 0,
     starterMinutes: 0,
     topMinutes: 0,
@@ -233,6 +240,8 @@ function addTeamGame(
   ).length
   totals.fastBreakPoints += team.fastBreakPoints
   totals.pointsOffTurnovers += team.pointsOffTurnovers
+  totals.timeouts += team.timeouts
+  totals.twoForOnes += team.twoForOnes
   for (const type of PLAY_TYPES) {
     totals.playTypeAttempts[type] += team.shotsByPlayType[type].attempted
     totals.playTypeMakes[type] += team.shotsByPlayType[type].made
@@ -445,6 +454,22 @@ function metrics(t: Totals): Metric[] {
       min: 0.05,
       max: 0.07,
       digits: 3,
+    },
+    // Timeouts and 2-for-1s (docs/design/timeouts.md, section 5): about 6 of 7 timeouts used, and
+    // about 1-2 quick 2-for-1 shots attempted per team-game.
+    {
+      label: 'Timeouts / team-game',
+      value: t.timeouts / t.teamGames,
+      min: 5.5,
+      max: 6.5,
+      digits: 2,
+    },
+    {
+      label: '2-for-1 attempts / team-game',
+      value: t.twoForOnes / t.teamGames,
+      min: 1,
+      max: 2,
+      digits: 2,
     },
     // Individual box-score checks (rotations; see docs/design/rotations.md section 5). Minutes
     // include overtime. The 40+/50+ rows count games where EITHER team had such a scorer.
@@ -676,12 +701,18 @@ function boostTeam(
 /** Simulates `team` vs `opponent` with home court alternating by game index. */
 function play(team: MatchTeam, opponent: MatchTeam, index: number, seed: number): MatchResult {
   const teamIsHome = index % 2 === 0
-  return simulateGame({
-    home: teamIsHome ? team : opponent,
-    away: teamIsHome ? opponent : team,
-    rules: PRO_RULES,
-    seed: seed * 7_919 + index,
-  })
+  try {
+    return simulateGame({
+      home: teamIsHome ? team : opponent,
+      away: teamIsHome ? opponent : team,
+      rules: PRO_RULES,
+      seed: seed * 7_919 + index,
+    })
+  } catch (error) {
+    // Name the game, so a stuck one can be reproduced.
+    console.error(`Game failed: seed ${seed}, index ${index}`)
+    throw error
+  }
 }
 
 /**
@@ -733,6 +764,62 @@ function runRotationProbe(games: number, seed: number): void {
     const r = totals.rotation
     console.log(
       `${String(rm).padEnd(6)} ${String(gm).padEnd(6)} ${(r.subs / r.games).toFixed(1).padStart(9)} ${(r.planGap / r.teamGames).toFixed(2).padStart(10)} ${(r.endBenchSeconds / r.teamSeconds).toFixed(3).padStart(11)} ${(r.exhaustedSeconds / r.teamGames / 60).toFixed(1).padStart(24)}`,
+    )
+  }
+}
+
+/**
+ * The score as the last 5:00 of regulation begins (from the play-by-play): [home, away]. The last
+ * entry before the final period's 5:00 mark carries it; 0-0 if nothing was logged before it.
+ */
+function scoreWithFiveLeft(result: MatchResult): [number, number] {
+  const mark = PRO_RULES.periods
+  let home = 0
+  let away = 0
+  for (const entry of result.playByPlay) {
+    if (entry.period > mark || (entry.period === mark && entry.clockSeconds <= 300)) break
+    home = entry.homeScore
+    away = entry.awayScore
+  }
+  return [home, away]
+}
+
+/** A copy of `team` whose coach has this Game Management (everything else neutral). */
+function withGameManagement(team: MatchTeam, gameManagement: number): MatchTeam {
+  return { ...team, rotationCoach: { rotationManagement: 10.5, gameManagement } }
+}
+
+/**
+ * Close-game win rate of Game Management coaches, talent equal (`--gm-probe`): a team plays a
+ * copy of itself with only the coach's Game Management differing. Close = within 5 points when
+ * the last 5:00 begins. Target (docs/design/timeouts.md): top vs. poor about +5 points.
+ */
+function runGameManagementProbe(games: number, seed: number): void {
+  console.log('\nGame Management probe (identical teams; close = within 5 at the 5:00 mark)')
+  console.log('matchup            games   close   close win rate of first   gap (pts)   OT rate')
+  for (const [first, second] of [
+    [20, 1],
+    [20, 10.5],
+    [10.5, 1],
+  ] as const) {
+    let close = 0
+    let firstWins = 0
+    let overtimes = 0
+    for (let i = 0; i < games; i++) {
+      const [team] = calibrationPair(seed + 700, i)
+      const a = withGameManagement(copyTeam(team, 'A'), first)
+      const b = withGameManagement(copyTeam(team, 'B'), second)
+      const result = play(a, b, i, seed)
+      if (result.periodsPlayed > PRO_RULES.periods) overtimes++
+      const [home, away] = scoreWithFiveLeft(result)
+      if (Math.abs(home - away) > 5) continue
+      close++
+      const aIsHome = result.home.teamId === 'A'
+      if (result.home.points > result.away.points === aIsHome) firstWins++
+    }
+    const rate = firstWins / close
+    console.log(
+      `GM ${String(first).padEnd(4)} vs ${String(second).padEnd(6)} ${String(games).padStart(8)} ${String(close).padStart(7)} ${rate.toFixed(3).padStart(14)} ${((2 * rate - 1) * 100).toFixed(1).padStart(20)} ${(overtimes / games).toFixed(3).padStart(10)}`,
     )
   }
 }
@@ -1214,6 +1301,16 @@ function main(): void {
     printFitStats(seed)
     return
   }
+  if (process.argv.includes('--gm-probe')) {
+    // Standalone: the probe plays its own identical-team games.
+    runGameManagementProbe(numberArg('gm-games', 12000), seed)
+    return
+  }
+  if (process.argv.includes('--identical-only')) {
+    // Quick overtime / margin check: skips the league games and the quality-spread estimate.
+    printMetrics(`Identical teams (${games} games)`, identicalMetrics(runIdentical(games, seed), 0))
+    return
+  }
   printReport(runLeague(games, seed))
   // The identical-teams noise, then the team-quality spread it implies for the generator.
   const identical = runIdentical(games, seed)
@@ -1224,6 +1321,8 @@ function main(): void {
   )
   if (process.argv.includes('--balance'))
     runBalance(numberArg('balance-games', Math.max(games, BALANCE_MIN_GAMES)), seed)
+  if (process.argv.includes('--gm-probe'))
+    runGameManagementProbe(numberArg('gm-games', 12000), seed)
   if (process.argv.includes('--rotation-probe'))
     runRotationProbe(numberArg('probe-games', 400), seed)
   if (process.argv.includes('--systems')) {

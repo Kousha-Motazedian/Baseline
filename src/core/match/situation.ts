@@ -48,7 +48,7 @@ export function roadEdge(team: TeamState, player: Player): number {
 
 /**
  * Form, clutch composure, the road crowd, fatigue and coaching (execution plus system fit)
- * for one player at one end of the floor: everything about today's situation. Coaching is added
+ * (and the drawn-up play after a timeout) for one player at one end of the floor: everything about today's situation. Coaching is added
  * last, so a team without coaching (edge exactly 0) gets bit-for-bit the old sum.
  */
 export function personalEdge(
@@ -62,7 +62,8 @@ export function personalEdge(
     clutchEdge(game, player) +
     roadEdge(team, player) +
     fatigueEdge(team, player) +
-    coachingEdge(team.tactics, player, end)
+    coachingEdge(team.tactics, player, end) +
+    (team.afterTimeout?.edge ?? 0)
   )
 }
 

@@ -1,9 +1,14 @@
 import type { GameState, TeamState } from './state.ts'
+import { clamp } from '../shared/probability.ts'
+import type { RotationCoach } from '../tactics/rotationTypes.ts'
+import { NEUTRAL_ROTATION_COACH } from '../tactics/rotationTypes.ts'
+import { foulDeficitFactor, foulWindowSeconds, tyingThreeWeight } from './endGame.ts'
 import { isClutch, isLateInGame, leadOf } from './state.ts'
 import {
   CHASE_FOUL_MAX_DEFICIT,
   FOUL_UP_THREE_SECONDS,
   HURRY_FACTOR,
+  HURRY_MAX_DEFICIT,
   HURRY_MIN_DEFICIT,
   HURRY_WINDOW_SECONDS,
   INTENTIONAL_FOUL_BASE_DEFICIT,
@@ -18,6 +23,8 @@ import {
   KEYED_DEFENSE_SECONDS,
   LAST_SHOT_BUFFER_SECONDS,
   MILK_BUFFER_SECONDS,
+  MILK_FADE_START,
+  MILK_FADE_WIDTH,
   MILK_FULL_LEAD,
   MILK_MAX_SHARE,
   MILK_SHOT_PENALTY,
@@ -62,12 +69,20 @@ export function milkShare(game: GameState, team: TeamState): number {
  * hard the team milks it. This is what makes protecting a lead a real trade-off.
  */
 export function milkShotPenalty(game: GameState, offense: TeamState): number {
-  return MILK_SHOT_PENALTY * milkShare(game, offense)
+  const lead = leadOf(game, offense)
+  // Fades out for big leads (see MILK_FADE_START): only a protected close lead is a trade-off.
+  const fade = clamp(1 - (lead - MILK_FADE_START) / MILK_FADE_WIDTH, 0, 1)
+  return MILK_SHOT_PENALTY * milkShare(game, offense) * fade
 }
 
 /** True if `team` is behind enough, late enough, that it hurries its offense. */
 function wantsToHurry(game: GameState, team: TeamState): boolean {
-  return isLateInGame(game, HURRY_WINDOW_SECONDS) && -leadOf(game, team) >= HURRY_MIN_DEFICIT
+  const deficit = -leadOf(game, team)
+  return (
+    isLateInGame(game, HURRY_WINDOW_SECONDS) &&
+    deficit >= HURRY_MIN_DEFICIT &&
+    deficit <= HURRY_MAX_DEFICIT
+  )
 }
 
 /**
@@ -116,13 +131,18 @@ export function endOfPeriodSeconds(
   seconds: number,
   shotClock: number,
   minSeconds: number,
+  timingError = 0,
 ): number | undefined {
   if (game.clock > shotClock) return undefined
-  const latest = game.clock - LAST_SHOT_BUFFER_SECONDS
+  // The coach's timing error (Game Management) moves the buffer: positive = shoots earlier,
+  // negative = holds longer. Never past the buzzer (0.2 s keeps a sliver of time for the shot).
+  const buffer = Math.max(0.2, LAST_SHOT_BUFFER_SECONDS + timingError)
+  const latest = game.clock - buffer
   if (latest < minSeconds) return undefined
   if (holdsForLastShot(game, offense, shotClock)) return latest
   if (trailsByOneShot(game, offense)) {
-    return Math.max(minSeconds, game.clock - TRAILING_SHOT_BUFFER_SECONDS)
+    const trailing = Math.max(0.2, TRAILING_SHOT_BUFFER_SECONDS + timingError)
+    return Math.max(minSeconds, game.clock - trailing)
   }
   return Math.min(seconds, latest)
 }
@@ -154,8 +174,13 @@ export function scoreAdjustedSeconds(
 export type IntentionalFoulPlan = 'stopClock' | 'denyThree'
 
 /** The biggest deficit still worth fouling for with the current clock (shrinks to the buzzer). */
-export function maxFoulingDeficit(game: GameState): number {
-  return INTENTIONAL_FOUL_BASE_DEFICIT + game.clock / INTENTIONAL_FOUL_SECONDS_PER_POINT
+export function maxFoulingDeficit(
+  game: GameState,
+  coach: RotationCoach = NEUTRAL_ROTATION_COACH,
+): number {
+  const cap = INTENTIONAL_FOUL_BASE_DEFICIT + game.clock / INTENTIONAL_FOUL_SECONDS_PER_POINT
+  // The coach's read of when the game is gone: a poor one keeps fouling at bigger deficits.
+  return cap * foulDeficitFactor(coach)
 }
 
 /**
@@ -166,21 +191,30 @@ export function maxFoulingDeficit(game: GameState): number {
 function trailingTeamFouls(game: GameState, defense: TeamState, shotClock: number): boolean {
   const deficit = -leadOf(game, defense)
   if (deficit <= 0) return false
+  // Game Management moves the start of the fouling: a poor coach starts too late.
   const extraPossessions =
-    isLateInGame(game, INTENTIONAL_FOUL_SECONDS) &&
+    isLateInGame(game, foulWindowSeconds(defense.coach, INTENTIONAL_FOUL_SECONDS)) &&
     deficit >= INTENTIONAL_FOUL_MIN_DEFICIT &&
-    deficit <= maxFoulingDeficit(game)
-  const chase = isLateInGame(game, shotClock) && deficit <= CHASE_FOUL_MAX_DEFICIT
+    deficit <= maxFoulingDeficit(game, defense.coach)
+  // A coach who forgets the chase foul lets the leader run out the clock.
+  const chase =
+    isLateInGame(game, shotClock) &&
+    deficit <= CHASE_FOUL_MAX_DEFICIT &&
+    !defense.lapses.missesChaseFoul
   return extraPossessions || chase
 }
 
 /**
  * True if a defense up exactly 3 fouls in the final seconds to deny the tying three: two free
- * throws can only cut it to 1. A coaching choice (FOUL_UP_THREE_SECONDS = 0 turns it off); it
- * should become a tactics setting.
+ * throws can only cut it to 1. A coaching choice (FOUL_UP_THREE_SECONDS = 0 turns it off) that
+ * depends on the coach's Game Management: a good one always does it, a poor one rarely.
  */
 function deniesTyingThree(game: GameState, defense: TeamState): boolean {
-  return isLateInGame(game, FOUL_UP_THREE_SECONDS) && leadOf(game, defense) === THREE_POINTS
+  return (
+    defense.lapses.foulsUpThree &&
+    isLateInGame(game, FOUL_UP_THREE_SECONDS) &&
+    leadOf(game, defense) === THREE_POINTS
+  )
 }
 
 /**
@@ -239,15 +273,17 @@ export function threePointHuntFactor(game: GameState, offense: TeamState): numbe
   const deficit = -leadOf(game, offense)
   // The final-seconds tying choice overrides general three hunting (not a max: down 2 it must be
   // able to LOWER the three weight).
-  const tying = tyingShotFactor(game, deficit)
+  const tying = tyingShotFactor(game, offense, deficit)
   return tying !== 1 ? tying : catchUpThreeFactor(game, deficit)
 }
 
 /** The final-seconds tie-seeking multiplier on threes (1 when it doesn't apply). */
-function tyingShotFactor(game: GameState, deficit: number): number {
+function tyingShotFactor(game: GameState, offense: TeamState, deficit: number): number {
   if (!isLateInGame(game, TYING_THREE_SECONDS)) return 1
-  if (deficit === THREE_POINTS) return TYING_THREE_FACTOR
-  return deficit === 2 ? TYING_TWO_THREE_FACTOR : 1
+  // How firmly the coach commits to the tying shot (down 3: the three, down 2: the two) depends
+  // on his Game Management; a poor one drifts toward plain play.
+  if (deficit === THREE_POINTS) return tyingThreeWeight(offense.coach, TYING_THREE_FACTOR)
+  return deficit === 2 ? tyingThreeWeight(offense.coach, TYING_TWO_THREE_FACTOR) : 1
 }
 
 /** The general late-game three hunting of a team down 3 or more (1 = none). */
