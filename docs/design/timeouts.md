@@ -129,3 +129,12 @@ timeout, and with the stub, the overtime rate did not move beyond noise (about 3
 way), and neither did fouling up 3 (0 to 100% of games) nor the keyed-defense edge. What moved it was
 late-game mean reversion: a longer, stronger lead-protection penalty (see match-engine.md,
 "Late-game score effects"). The fade for big leads keeps blowouts (average margin of victory) intact.
+
+## 9. Implementation notes: the coach's timeout decision
+
+Code: `src/core/tactics/timeouts.ts` (`decideTimeout(ctx, rng)`), constants in `src/core/tactics/timeoutTuning.ts`.
+
+- Always draws exactly two RNG numbers (forget roll, act roll) so the stream does not depend on the situation. Never calls one with `timeoutsLeft` 0.
+- **Late window** (final period/overtime, last 5:00, windows shrink on short periods): trailing and not hopeless (`leadSafety` above -2.5): last 28s with the ball within 3 -> `lastPossession`; after an opponent score -> `stopClock`; last 2:00 with the ball, down at most 8 or tied -> `advanceBall`. Leading: only a 4% chance in the last 20s with the ball and a lead of 3 or less. Each acts with a chance that grows with Game Management, and a "forgot" roll (30% at GM 1, 2% at GM 20) cancels it. Late timeouts may use every timeout he has.
+- **Run/rest** (everywhere else): only if `timeoutsLeftTotal` exceeds his reserve. Reserve = round(max(mid, end)): mid is 1 (GM 1) to 4 (GM 20) scaled by regulation left; end is 0 to 3 and holds through the final period. `stopRun` after an opponent score when the run reaches 6 (GM 1) to 10 (GM 20) points, 75% chance; `rest` when lowest on-court energy is under 42 (GM 1) to 28 (GM 20) or average under 50, 50% chance.
+- Calibration (about 6 of 7 used) is measured in batch-sim; adjust the reserve and the call chances in the tuning file.
